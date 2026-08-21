@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "833020376717",
+    "project_id": "wasacricket-4bb6c",
+    "storage_bucket": "wasacricket-4bb6c.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:833020376717:android:e3d45f357397119c4114c4",
+        "android_client_info": {
+          "package_name": "com.wpl.wpl_cricket_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "833020376717-n2oucpq07cg885ues12lunlsjejbqopb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wpl.wpl_cricket_app",
+            "certificate_hash": "e2cd6e1db9c062e0226b1c6178816fc589f82696"
+          }
+        },
+        {
+          "client_id": "833020376717-eqlcgl5lcu51bjk3vc7ql1gag14c81om.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDlP_iFZhe1SxKRrME9BvHwIkmI9SPn_8o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "833020376717-eqlcgl5lcu51bjk3vc7ql1gag14c81om.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "833020376717-beos6o33t16rjg0hmau75sf8u9tbdrc5.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.wpl.wplCricketApp"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

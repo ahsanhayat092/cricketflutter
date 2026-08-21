@@ -1,0 +1,466 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+
+import '../../../core/constants/app_colors.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../scoring/models/match_model.dart';
+import '../../scoring/models/team_model.dart';
+import '../../scoring/models/innings_model.dart';
+import '../../live_viewer/presentation/live_match_screen.dart';
+import '../../live_viewer/presentation/match_scorecard_screen.dart';
+import '../providers/tournament_providers.dart';
+import 'match_lineup_screen.dart';
+
+class FixturesScreen extends ConsumerStatefulWidget {
+  const FixturesScreen({super.key});
+
+  @override
+  ConsumerState<FixturesScreen> createState() => _FixturesScreenState();
+}
+
+class _FixturesScreenState extends ConsumerState<FixturesScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final matchesAsync = ref.watch(matchesProvider);
+    final teamsAsync = ref.watch(teamsProvider);
+    final user = ref.watch(currentUserProvider);
+
+    final allMatches = matchesAsync.value ?? [];
+    final allTeams = teamsAsync.value ?? [];
+
+    final teamMap = {for (var t in allTeams) t.id: t};
+
+    final liveMatches = allMatches.where((m) => m.isLive).toList();
+    final upcomingMatches = allMatches.where((m) => m.isUpcoming).toList();
+    final completedMatches = allMatches.where((m) => m.isCompleted).toList();
+
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        title: Text(
+          'MATCHES & FIXTURES',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1.0),
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: AppColors.accentCyan),
+            tooltip: 'Refresh Matches',
+            onPressed: () {
+              ref.invalidate(matchesProvider);
+              ref.invalidate(teamsProvider);
+            },
+          ),
+        ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: AppColors.accent,
+          indicatorWeight: 3,
+          labelColor: AppColors.accent,
+          unselectedLabelColor: AppColors.textMuted,
+          labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 13),
+          unselectedLabelStyle: GoogleFonts.outfit(fontWeight: FontWeight.w600, fontSize: 13),
+          tabs: [
+            Tab(text: 'LIVE (${liveMatches.length})'),
+            Tab(text: 'UPCOMING (${upcomingMatches.length})'),
+            Tab(text: 'COMPLETED (${completedMatches.length})'),
+          ],
+        ),
+      ),
+      body: matchesAsync.when(
+        loading: () => const Center(
+          child: CircularProgressIndicator(color: AppColors.accent),
+        ),
+        error: (err, _) => Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: AppColors.wicket),
+                const SizedBox(height: 12),
+                Text(
+                  'Failed to load matches from Firestore',
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  err.toString().split('\n').first,
+                  textAlign: TextAlign.center,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.black),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('RETRY'),
+                  onPressed: () => ref.invalidate(matchesProvider),
+                ),
+              ],
+            ),
+          ),
+        ),
+        data: (_) => TabBarView(
+          controller: _tabController,
+          children: [
+            _buildMatchList(liveMatches, teamMap, user.canScore, 'No live matches in progress'),
+            _buildMatchList(upcomingMatches, teamMap, user.canScore, 'No upcoming matches scheduled'),
+            _buildMatchList(completedMatches, teamMap, user.canScore, 'No completed matches yet'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMatchList(
+    List<MatchModel> matches,
+    Map<String, TeamModel> teamMap,
+    bool canScore,
+    String emptyMessage,
+  ) {
+    if (matches.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.sports_cricket_rounded, size: 48, color: AppColors.textMuted),
+            const SizedBox(height: 12),
+            Text(
+              emptyMessage,
+              style: GoogleFonts.outfit(fontSize: 14, color: AppColors.textMuted),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: matches.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final match = matches[index];
+        final teamA = teamMap[match.teamAId] ?? TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
+        final teamB = teamMap[match.teamBId] ?? TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+
+        return _MatchCard(
+          match: match,
+          teamA: teamA,
+          teamB: teamB,
+          canScore: canScore,
+        );
+      },
+    );
+  }
+}
+
+class _MatchCard extends ConsumerWidget {
+  final MatchModel match;
+  final TeamModel teamA;
+  final TeamModel teamB;
+  final bool canScore;
+
+  const _MatchCard({
+    required this.match,
+    required this.teamA,
+    required this.teamB,
+    required this.canScore,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final inningsAsync = ref.watch(matchInningsProvider(match.id));
+    final inningsList = inningsAsync.value ?? [];
+
+    final inn1 = inningsList.isNotEmpty ? inningsList.firstWhere((i) => i.inningsNumber == 1, orElse: () => inningsList.first) : null;
+    final inn2 = inningsList.length > 1 ? inningsList.firstWhere((i) => i.inningsNumber == 2, orElse: () => inningsList.last) : null;
+
+    final isWinnerA = match.winningTeamId == teamA.id;
+    final isWinnerB = match.winningTeamId == teamB.id;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: match.isLive
+              ? AppColors.liveRed.withValues(alpha: 0.3)
+              : (match.isCompleted ? AppColors.accent.withValues(alpha: 0.15) : Colors.white.withValues(alpha: 0.08)),
+          width: match.isLive ? 1.5 : 1,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            if (match.isUpcoming && canScore) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => MatchLineupScreen(match: match)),
+              );
+            } else if (match.isCompleted) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => MatchScorecardScreen(matchId: match.id)),
+              );
+            } else {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => LiveMatchScreen(matchId: match.id)),
+              );
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 1. Header: Match Number, Stage, Venue, Status
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${match.stage} • MATCH #${match.matchNumber} • ${match.day}',
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                    _buildStatusBadge(match.status),
+                  ],
+                ),
+                const SizedBox(height: 12),
+
+                // 2. Team A Row
+                _buildTeamRow(
+                  team: teamA,
+                  inn: inn1?.battingTeamId == teamA.id ? inn1 : (inn2?.battingTeamId == teamA.id ? inn2 : null),
+                  isWinner: isWinnerA,
+                  match: match,
+                ),
+                const SizedBox(height: 8),
+
+                // 3. Team B Row
+                _buildTeamRow(
+                  team: teamB,
+                  inn: inn1?.battingTeamId == teamB.id ? inn1 : (inn2?.battingTeamId == teamB.id ? inn2 : null),
+                  isWinner: isWinnerB,
+                  match: match,
+                ),
+
+                const SizedBox(height: 12),
+                const Divider(height: 1, color: Colors.white10),
+                const SizedBox(height: 8),
+
+                // 4. Completed Match Summary Banner / Action Footer
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Row(
+                        children: [
+                          if (match.isCompleted)
+                            const Padding(
+                              padding: EdgeInsets.only(right: 6),
+                              child: Icon(Icons.emoji_events_rounded, size: 16, color: AppColors.gold),
+                            ),
+                          Expanded(
+                            child: Text(
+                              match.resultText ??
+                                  (match.isLive
+                                      ? '🔴 Live in Progress • ${match.maxOvers} Overs'
+                                      : 'Starts ${match.date} ${match.time.isNotEmpty ? "at ${match.time}" : ""}'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                fontWeight: match.isCompleted ? FontWeight.bold : FontWeight.w600,
+                                color: match.isCompleted
+                                    ? AppColors.gold
+                                    : (match.isLive ? AppColors.accent : AppColors.textSecondary),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Text(
+                          match.isUpcoming && canScore
+                              ? 'Setup Lineup'
+                              : (match.isCompleted ? 'View Scorecard' : 'Live Score'),
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.accentCyan,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.chevron_right, size: 16, color: AppColors.accentCyan),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTeamRow({
+    required TeamModel team,
+    required InningsModel? inn,
+    required bool isWinner,
+    required MatchModel match,
+  }) {
+    return Row(
+      children: [
+        // Logo
+        Container(
+          width: 32,
+          height: 32,
+          decoration: const BoxDecoration(
+            color: AppColors.surfaceLight,
+            shape: BoxShape.circle,
+          ),
+          child: ClipOval(
+            child: team.logoUrl.isNotEmpty
+                ? CachedNetworkImage(
+                    imageUrl: team.logoUrl,
+                    fit: BoxFit.cover,
+                    errorWidget: (_, __, ___) => _fallbackLogo(team.shortName),
+                  )
+                : _fallbackLogo(team.shortName),
+          ),
+        ),
+        const SizedBox(width: 10),
+
+        // Team Name + Winner Trophy
+        Expanded(
+          child: Row(
+            children: [
+              Text(
+                team.name,
+                style: GoogleFonts.outfit(
+                  fontSize: 15,
+                  fontWeight: isWinner ? FontWeight.w900 : FontWeight.w700,
+                  color: isWinner ? AppColors.textPrimary : AppColors.textSecondary,
+                ),
+              ),
+              if (isWinner) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.check_circle_rounded, size: 15, color: AppColors.accent),
+              ],
+            ],
+          ),
+        ),
+
+        // Score & Overs
+        if (inn != null)
+          Row(
+            children: [
+              Text(
+                '${inn.runs}/${inn.wickets}',
+                style: GoogleFonts.outfit(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: isWinner ? AppColors.accent : AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '(${inn.oversString} ov)',
+                style: GoogleFonts.outfit(
+                  fontSize: 12,
+                  color: AppColors.textMuted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          )
+        else
+          Text(
+            match.isUpcoming ? 'Yet to play' : 'Yet to bat',
+            style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
+          ),
+      ],
+    );
+  }
+
+  Widget _fallbackLogo(String text) {
+    return Center(
+      child: Text(
+        text.isNotEmpty ? text[0] : 'T',
+        style: GoogleFonts.outfit(
+          fontSize: 14,
+          fontWeight: FontWeight.bold,
+          color: AppColors.textPrimary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(String status) {
+    final isLive = status.toUpperCase() == 'LIVE';
+    final isCompleted = status.toUpperCase() == 'COMPLETED';
+
+    Color bgColor = AppColors.surfaceLight;
+    Color textColor = AppColors.textMuted;
+
+    if (isLive) {
+      bgColor = AppColors.liveRed.withValues(alpha: 0.2);
+      textColor = AppColors.liveRed;
+    } else if (isCompleted) {
+      bgColor = AppColors.accent.withValues(alpha: 0.15);
+      textColor = AppColors.accent;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        status.toUpperCase(),
+        style: GoogleFonts.outfit(
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          color: textColor,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
