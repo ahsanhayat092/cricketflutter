@@ -36,6 +36,8 @@ class ScoringSyncService {
   /// 1. Start Match: Updates match lineup, toss, and creates 1st Innings atomically
   Future<void> startMatch({
     required String matchId,
+    String? teamAId,
+    String? teamBId,
     required List<String> teamAPlayingVI,
     required String? teamAReserveId,
     required List<String> teamBPlayingVI,
@@ -54,8 +56,7 @@ class ScoringSyncService {
     final now = DateTime.now().toIso8601String();
 
     // 1. Update Match
-    final matchRef = _firestore.doc(FirestorePaths.match(matchId));
-    batch.set(matchRef, {
+    final Map<String, dynamic> matchUpdate = {
       'teamAPlayingVI': teamAPlayingVI,
       'teamAReserveId': teamAReserveId,
       'teamBPlayingVI': teamBPlayingVI,
@@ -64,7 +65,16 @@ class ScoringSyncService {
       'tossDecision': tossDecision,
       'status': 'LIVE',
       'updatedAt': now,
-    }, SetOptions(merge: true));
+    };
+    if (teamAId != null && teamAId.isNotEmpty) {
+      matchUpdate['teamAId'] = teamAId;
+    }
+    if (teamBId != null && teamBId.isNotEmpty) {
+      matchUpdate['teamBId'] = teamBId;
+    }
+
+    final matchRef = _firestore.doc(FirestorePaths.match(matchId));
+    batch.set(matchRef, matchUpdate, SetOptions(merge: true));
 
     // 2. Create Innings 1
     final inningsId = 'inn_${matchId}_1';
@@ -324,8 +334,69 @@ class ScoringSyncService {
 
       await batch.commit();
       debugPrint('[ScoringSyncService] Successfully recalculated and updated tournament standings in Firestore.');
+
+      // Auto-update Grand Final fixture with top 2 qualified teams
+      await maybeUpdateFinalFixture(tournamentId);
     } catch (e, stack) {
       debugPrint('[ScoringSyncService] Error recalculating standings: $e\n$stack');
+    }
+  }
+
+  /// Auto-Update Grand Final Fixture in Firestore with Top 2 Ranked Teams from Standings
+  Future<void> maybeUpdateFinalFixture(String tournamentId) async {
+    try {
+      final standingsSnap = await _firestore
+          .collection(FirestorePaths.standings)
+          .where('tournamentId', isEqualTo: tournamentId)
+          .get();
+
+      final standings = standingsSnap.docs
+          .map((d) => StandingModel.fromFirestore(d))
+          .toList();
+
+      standings.sort((a, b) {
+        if (a.position != b.position) {
+          return a.position.compareTo(b.position);
+        }
+        if (b.points != a.points) {
+          return b.points.compareTo(a.points);
+        }
+        return b.nrr.compareTo(a.nrr);
+      });
+
+      if (standings.length < 2) return;
+      final rank1TeamId = standings[0].teamId;
+      final rank2TeamId = standings[1].teamId;
+
+      final matchesSnap = await _firestore
+          .collection(FirestorePaths.matches)
+          .where('tournamentId', isEqualTo: tournamentId)
+          .get();
+
+      final matches = matchesSnap.docs
+          .map((d) => MatchModel.fromMap(d.id, d.data()))
+          .toList();
+
+      final finalMatches = matches.where((m) =>
+          m.stage.toUpperCase() == 'FINAL' || m.matchNumber >= 10).toList();
+
+      if (finalMatches.isEmpty) return;
+      final finalMatch = finalMatches.first;
+
+      // Do not overwrite completed or live final match
+      if (finalMatch.isCompleted || finalMatch.isLive) return;
+
+      if (finalMatch.teamAId != rank1TeamId || finalMatch.teamBId != rank2TeamId) {
+        await _firestore.collection(FirestorePaths.matches).doc(finalMatch.id).update({
+          'teamAId': rank1TeamId,
+          'teamBId': rank2TeamId,
+          'stage': 'FINAL',
+          'updatedAt': DateTime.now().toIso8601String(),
+        });
+        debugPrint('[ScoringSyncService] Updated Grand Final (${finalMatch.id}) fixture in Firestore with Rank 1 ($rank1TeamId) vs Rank 2 ($rank2TeamId)');
+      }
+    } catch (e, stack) {
+      debugPrint('[ScoringSyncService] Error updating Final fixture: $e\n$stack');
     }
   }
 }

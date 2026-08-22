@@ -9,6 +9,8 @@ import '../../scoring/models/tournament_model.dart';
 import '../../scoring/models/innings_model.dart';
 import '../../scoring/models/batting_score.dart';
 import '../../scoring/models/bowling_score.dart';
+import '../../standings/providers/standings_provider.dart';
+import '../../standings/models/standing.dart';
 
 final scoringServiceProvider = Provider<FirebaseScoringService>((ref) {
   return FirebaseScoringService();
@@ -21,6 +23,36 @@ final playerRepositoryProvider = Provider<PlayerRepository>((ref) {
 final scoringSyncServiceProvider = Provider<ScoringSyncService>((ref) {
   return ScoringSyncService();
 });
+
+/// Helper to dynamically hydrate Final match teams from Standings (Rank 1 & Rank 2)
+MatchModel hydrateMatchWithStandings(MatchModel match, List<StandingWithTeam> standings) {
+  final isFinal = match.stage.toUpperCase() == 'FINAL' || match.matchNumber >= 10;
+  if (!isFinal || standings.length < 2) return match;
+
+  final rank1TeamId = standings[0].standing.teamId;
+  final rank2TeamId = standings[1].standing.teamId;
+
+  final isTeamAUnset = match.teamAId.isEmpty ||
+      match.teamAId.toLowerCase() == 'rank_1' ||
+      match.teamAId.toLowerCase() == 'rank1' ||
+      match.teamAId.toLowerCase() == 'tbd' ||
+      match.teamAId.toLowerCase() == 'team a';
+
+  final isTeamBUnset = match.teamBId.isEmpty ||
+      match.teamBId.toLowerCase() == 'rank_2' ||
+      match.teamBId.toLowerCase() == 'rank2' ||
+      match.teamBId.toLowerCase() == 'tbd' ||
+      match.teamBId.toLowerCase() == 'team b';
+
+  if (isTeamAUnset || isTeamBUnset) {
+    return match.copyWith(
+      teamAId: isTeamAUnset ? rank1TeamId : match.teamAId,
+      teamBId: isTeamBUnset ? rank2TeamId : match.teamBId,
+      stage: 'FINAL',
+    );
+  }
+  return match;
+}
 
 /// Realtime Tournament Singleton Stream from Firestore (/tournaments/main)
 final tournamentProvider = StreamProvider<TournamentModel?>((ref) {
@@ -46,16 +78,26 @@ final teamPlayersStreamProvider = StreamProvider.family<List<PlayerModel>, Strin
   return repo.getPlayersByTeamStream(teamId);
 });
 
-/// Realtime Matches Stream from Firestore (/matches)
+/// Realtime Matches Stream from Firestore (/matches) with Finalist Hydration
 final matchesProvider = StreamProvider<List<MatchModel>>((ref) {
   final service = ref.watch(scoringServiceProvider);
-  return service.getMatchesStream();
+  final standingsAsync = ref.watch(standingsStreamProvider);
+  final standings = standingsAsync.value ?? [];
+
+  return service.getMatchesStream().map((matches) {
+    return matches.map((m) => hydrateMatchWithStandings(m, standings)).toList();
+  });
 });
 
-/// Realtime Single Match Stream from Firestore (/matches/{matchId})
+/// Realtime Single Match Stream from Firestore (/matches/{matchId}) with Finalist Hydration
 final singleMatchProvider = StreamProvider.family<MatchModel?, String>((ref, matchId) {
   final service = ref.watch(scoringServiceProvider);
-  return service.getMatchStream(matchId);
+  final standingsAsync = ref.watch(standingsStreamProvider);
+  final standings = standingsAsync.value ?? [];
+
+  return service.getMatchStream(matchId).map((match) {
+    return hydrateMatchWithStandings(match, standings);
+  });
 });
 
 /// Realtime Innings List Stream for a Match (/innings where matchId == matchId)

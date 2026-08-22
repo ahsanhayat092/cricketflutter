@@ -12,6 +12,7 @@ import '../../scoring/models/player_model.dart';
 import '../../scoring/presentation/scorer_console_screen.dart';
 import '../../scoring/presentation/opening_players_dialog.dart';
 import '../providers/tournament_providers.dart';
+import '../../standings/providers/standings_provider.dart';
 import 'toss_modal.dart';
 
 class MatchLineupScreen extends ConsumerStatefulWidget {
@@ -58,9 +59,9 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     super.dispose();
   }
 
-  void _togglePlayer(String teamId, String playerId) {
+  void _togglePlayer(String teamId, String teamAId, String playerId) {
     setState(() {
-      final isTeamA = teamId == widget.match.teamAId;
+      final isTeamA = teamId == teamAId;
       final playingSet = isTeamA ? _teamAPlayingVI : _teamBPlayingVI;
 
       if (playingSet.contains(playerId)) {
@@ -120,18 +121,22 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
       return;
     }
 
+    final standingsAsync = ref.read(standingsStreamProvider);
+    final standings = standingsAsync.value ?? [];
+    final currentMatch = hydrateMatchWithStandings(widget.match, standings);
+
     final allTeams = ref.read(teamsProvider).value ?? [];
     final teamA = allTeams.firstWhere(
-      (t) => t.id == widget.match.teamAId,
-      orElse: () => TeamModel(id: widget.match.teamAId, name: 'Team A', shortName: 'TMA'),
+      (t) => t.id == currentMatch.teamAId,
+      orElse: () => TeamModel(id: currentMatch.teamAId, name: 'Team A', shortName: 'TMA'),
     );
     final teamB = allTeams.firstWhere(
-      (t) => t.id == widget.match.teamBId,
-      orElse: () => TeamModel(id: widget.match.teamBId, name: 'Team B', shortName: 'TMB'),
+      (t) => t.id == currentMatch.teamBId,
+      orElse: () => TeamModel(id: currentMatch.teamBId, name: 'Team B', shortName: 'TMB'),
     );
 
     // Determine batting & bowling teams based on toss
-    final isTeamAWonToss = _tossWinnerId == widget.match.teamAId;
+    final isTeamAWonToss = _tossWinnerId == teamA.id;
     final isBatFirst = _tossDecision?.toUpperCase() == 'BAT';
 
     final battingTeam = (isTeamAWonToss && isBatFirst) || (!isTeamAWonToss && !isBatFirst)
@@ -172,7 +177,9 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
       final syncService = ref.read(scoringSyncServiceProvider);
 
       await syncService.startMatch(
-        matchId: widget.match.id,
+        matchId: currentMatch.id,
+        teamAId: currentMatch.teamAId,
+        teamBId: currentMatch.teamBId,
         teamAPlayingVI: _teamAPlayingVI.toList(),
         teamAReserveId: _teamAReserveId,
         teamBPlayingVI: _teamBPlayingVI.toList(),
@@ -291,14 +298,18 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
       );
     }
 
+    final standingsAsync = ref.watch(standingsStreamProvider);
+    final standings = standingsAsync.value ?? [];
+    final currentMatch = hydrateMatchWithStandings(widget.match, standings);
+
     final allTeams = ref.watch(teamsProvider).value ?? [];
     final teamA = allTeams.firstWhere(
-      (t) => t.id == widget.match.teamAId,
-      orElse: () => TeamModel(id: widget.match.teamAId, name: 'Team A', shortName: 'TMA'),
+      (t) => t.id == currentMatch.teamAId,
+      orElse: () => TeamModel(id: currentMatch.teamAId, name: 'Team A', shortName: 'TMA'),
     );
     final teamB = allTeams.firstWhere(
-      (t) => t.id == widget.match.teamBId,
-      orElse: () => TeamModel(id: widget.match.teamBId, name: 'Team B', shortName: 'TMB'),
+      (t) => t.id == currentMatch.teamBId,
+      orElse: () => TeamModel(id: currentMatch.teamBId, name: 'Team B', shortName: 'TMB'),
     );
 
     // Dedicated reactive streams for both teams
@@ -384,10 +395,10 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildSquadTab(teamA, teamAPlayersAsync, _teamAPlayingVI, _teamAReserveId, (resId) {
+                _buildSquadTab(teamA, teamAPlayersAsync, _teamAPlayingVI, _teamAReserveId, teamA.id, (resId) {
                   setState(() => _teamAReserveId = resId);
                 }),
-                _buildSquadTab(teamB, teamBPlayersAsync, _teamBPlayingVI, _teamBReserveId, (resId) {
+                _buildSquadTab(teamB, teamBPlayersAsync, _teamBPlayingVI, _teamBReserveId, teamA.id, (resId) {
                   setState(() => _teamBReserveId = resId);
                 }),
               ],
@@ -436,6 +447,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     AsyncValue<List<PlayerModel>> playersAsync,
     Set<String> playingVI,
     String? reserveId,
+    String teamAId,
     ValueChanged<String?> onReserveChanged,
   ) {
     return playersAsync.when(
@@ -577,7 +589,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                     value: isSelected,
                     activeColor: AppColors.accent,
                     checkColor: Colors.black,
-                    onChanged: isReserve ? null : (_) => _togglePlayer(team.id, player.id),
+                    onChanged: isReserve ? null : (_) => _togglePlayer(team.id, teamAId, player.id),
                   ),
                 ),
               );
