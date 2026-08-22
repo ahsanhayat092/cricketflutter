@@ -35,6 +35,13 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
   int _lastEventTimestamp = 0;
 
   @override
+  void initState() {
+    super.initState();
+    // Set timestamp to now so stale events from previous sessions do not animate on entry
+    _lastEventTimestamp = DateTime.now().millisecondsSinceEpoch;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
     final matchAsync = ref.watch(singleMatchProvider(widget.matchId));
@@ -109,11 +116,16 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
 
         final firstInningsRuns = inningsList.length > 1 ? inningsList.first.runs : null;
 
-        // Check for celebration events (FOUR, SIX, WICKET, MAIDEN)
-        if (match.recentEvent != null && match.recentEvent!.timestamp > _lastEventTimestamp) {
+        // Check for celebration events (FOUR, SIX, WICKET, MAIDEN) only if fresh (< 5 seconds ago)
+        final now = DateTime.now().millisecondsSinceEpoch;
+        if (match.recentEvent != null &&
+            match.recentEvent!.timestamp > _lastEventTimestamp &&
+            (now - match.recentEvent!.timestamp) < 5000) {
           _lastEventTimestamp = match.recentEvent!.timestamp;
           _activeCelebrationType = match.recentEvent!.type;
           _activeCelebrationText = match.recentEvent!.text;
+        } else if (match.recentEvent != null && match.recentEvent!.timestamp > _lastEventTimestamp) {
+          _lastEventTimestamp = match.recentEvent!.timestamp;
         }
 
         final titleText = hasInningsStarted
