@@ -18,12 +18,14 @@ class DeliveryWheel extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
+    final displayedBalls = recentBalls.reversed.toList();
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,10 +58,10 @@ class DeliveryWheel extends StatelessWidget {
             height: 38,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
-              itemCount: recentBalls.length,
+              itemCount: displayedBalls.length,
               separatorBuilder: (_, __) => const SizedBox(width: 8),
               itemBuilder: (context, index) {
-                final ball = recentBalls[index];
+                final ball = displayedBalls[index];
                 final color = AppColors.getDeliveryColor(ball);
                 final isWicket = ball.contains('W');
                 final isSix = ball == '6';
@@ -70,7 +72,7 @@ class DeliveryWheel extends StatelessWidget {
                   width: 38,
                   height: 38,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.22),
+                    color: color.withValues(alpha: 0.22),
                     shape: BoxShape.circle,
                     border: Border.all(
                       color: color,
@@ -79,7 +81,7 @@ class DeliveryWheel extends StatelessWidget {
                     boxShadow: (isSix || isFour || isWicket)
                         ? [
                             BoxShadow(
-                              color: color.withOpacity(0.35),
+                              color: color.withValues(alpha: 0.35),
                               blurRadius: 6,
                               spreadRadius: 1,
                             ),

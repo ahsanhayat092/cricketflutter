@@ -675,6 +675,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
   }
 
   Widget _buildRecentDeliveries(List<String> recentBalls) {
+    final displayedBalls = recentBalls.reversed.toList();
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -691,14 +692,14 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: recentBalls.isEmpty
+            child: displayedBalls.isEmpty
                 ? Text('No balls bowled yet', style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted))
                 : ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: recentBalls.length,
+                    itemCount: displayedBalls.length,
                     separatorBuilder: (_, __) => const SizedBox(width: 6),
                     itemBuilder: (context, index) {
-                      final ball = recentBalls[index];
+                      final ball = displayedBalls[index];
                       final color = AppColors.getDeliveryColor(ball);
                       return Container(
                         width: 32,
