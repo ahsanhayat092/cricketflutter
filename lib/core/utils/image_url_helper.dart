@@ -38,4 +38,7 @@ class ImageUrlHelper {
     // 4. Return trimmed original URL (for direct HTTPS URLs, Firebase Storage, etc.)
     return trimmed;
   }
+
+  /// Alias for formatDirectImageUrl
+  static String? formatDirectUrl(String? url) => formatDirectImageUrl(url);
 }

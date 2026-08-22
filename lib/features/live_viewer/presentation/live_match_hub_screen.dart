@@ -9,6 +9,8 @@ import '../../scoring/models/match_model.dart';
 import '../../scoring/models/team_model.dart';
 import 'live_match_screen.dart';
 import 'match_scorecard_screen.dart';
+import '../../sharing/presentation/share_story_modal.dart';
+import '../../sharing/presentation/widgets/match_story_card.dart';
 
 class LiveMatchHubScreen extends ConsumerStatefulWidget {
   final VoidCallback? onExploreFixtures;
@@ -424,20 +426,42 @@ class _LiveMatchHubScreenState extends ConsumerState<LiveMatchHubScreen> {
                 '${teamA.shortName} vs ${teamB.shortName}',
                 style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 16, color: AppColors.textPrimary),
               ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.surfaceLight,
-                  foregroundColor: AppColors.accentCyan,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => MatchScorecardScreen(matchId: match.id)),
-                  );
-                },
-                child: Text('SCORECARD', style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w800)),
+              Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.share_rounded, size: 18, color: AppColors.accent),
+                    tooltip: 'Share Story',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      ShareStoryModal.show(
+                        context,
+                        match: match,
+                        teamA: teamA,
+                        teamB: teamB,
+                        inningsList: ref.read(matchInningsProvider(match.id)).value ?? [],
+                        allPlayers: ref.read(playersProvider).value ?? [],
+                        initialTemplate: StoryCardTemplate.matchResult,
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.surfaceLight,
+                      foregroundColor: AppColors.accentCyan,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => MatchScorecardScreen(matchId: match.id)),
+                      );
+                    },
+                    child: Text('SCORECARD', style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.w800)),
+                  ),
+                ],
               ),
             ],
           ),

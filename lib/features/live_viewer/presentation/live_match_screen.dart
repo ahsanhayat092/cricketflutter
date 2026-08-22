@@ -17,6 +17,8 @@ import 'widgets/delivery_wheel.dart';
 import 'widgets/live_scorecard_tabs.dart';
 import 'widgets/celebration_overlay.dart';
 import 'match_scorecard_screen.dart';
+import '../../sharing/presentation/share_story_modal.dart';
+import '../../sharing/presentation/widgets/match_story_card.dart';
 
 class LiveMatchScreen extends ConsumerStatefulWidget {
   final String matchId;
@@ -155,7 +157,22 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
             ),
             actions: [
               // Full ESPN Cricinfo Scorecard Button
-              if (hasInningsStarted)
+              if (hasInningsStarted) ...[
+                IconButton(
+                  icon: const Icon(Icons.share_rounded, color: AppColors.accent),
+                  tooltip: 'Share Instagram Story',
+                  onPressed: () {
+                    ShareStoryModal.show(
+                      context,
+                      match: match,
+                      teamA: teamA,
+                      teamB: teamB,
+                      inningsList: inningsList,
+                      allPlayers: players,
+                      initialTemplate: match.isCompleted ? StoryCardTemplate.matchResult : StoryCardTemplate.matchOverview,
+                    );
+                  },
+                ),
                 IconButton(
                   icon: const Icon(Icons.table_chart_rounded, color: AppColors.accentCyan),
                   tooltip: 'Full ESPN Scorecard',
@@ -168,6 +185,7 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
                     );
                   },
                 ),
+              ],
 
               // Scorer Access Button (if authenticated official)
               if (user.canScore)

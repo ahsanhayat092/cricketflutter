@@ -12,6 +12,8 @@ import '../../scoring/models/innings_model.dart';
 import '../../scoring/models/batting_score.dart';
 import '../../scoring/models/bowling_score.dart';
 import '../../match_management/providers/tournament_providers.dart';
+import '../../sharing/presentation/share_story_modal.dart';
+import '../../sharing/presentation/widgets/match_story_card.dart';
 
 class MatchScorecardScreen extends ConsumerStatefulWidget {
   final String matchId;
@@ -85,6 +87,23 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
             ),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share_rounded, color: AppColors.accent),
+            tooltip: 'Share Instagram Story Card',
+            onPressed: () {
+              ShareStoryModal.show(
+                context,
+                match: match,
+                teamA: teamA,
+                teamB: teamB,
+                inningsList: inningsList,
+                allPlayers: players,
+                initialTemplate: match.isCompleted ? StoryCardTemplate.matchResult : StoryCardTemplate.matchOverview,
+              );
+            },
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -227,6 +246,44 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
                       fontSize: 12,
                       fontWeight: FontWeight.bold,
                       color: match.isCompleted ? AppColors.gold : AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                InkWell(
+                  onTap: () {
+                    ShareStoryModal.show(
+                      context,
+                      match: match,
+                      teamA: teamA,
+                      teamB: teamB,
+                      inningsList: ref.read(matchInningsProvider(match.id)).value ?? [],
+                      allPlayers: ref.read(playersProvider).value ?? [],
+                      initialTemplate: match.isCompleted ? StoryCardTemplate.matchResult : StoryCardTemplate.matchOverview,
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(6),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.share_rounded, size: 12, color: AppColors.accent),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Story',
+                          style: GoogleFonts.outfit(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
