@@ -3,10 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/cricket_calculator.dart';
+import '../../../core/utils/image_url_helper.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../models/ball_event.dart';
@@ -532,8 +534,8 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            // 1. Top Scoreboard Bar with CRR, RRR, Target Equation
-            _buildScoreBanner(innings, match, isChasing, target, rrr),
+            // 1. Top Scoreboard Bar with Batting Team Logo & Name, Score, CRR, RRR, Target Equation
+            _buildScoreBanner(innings, match, isChasing, target, rrr, battingTeam),
 
             // 2. Recent Deliveries Strip
             _buildRecentDeliveries(innings.recentBalls),
@@ -594,82 +596,190 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     );
   }
 
-  Widget _buildScoreBanner(InningsModel innings, MatchModel match, bool isChasing, int? target, double? rrr) {
+  Widget _buildScoreBanner(
+    InningsModel innings,
+    MatchModel match,
+    bool isChasing,
+    int? target,
+    double? rrr,
+    TeamModel battingTeam,
+  ) {
+    final directLogoUrl = ImageUrlHelper.formatDirectImageUrl(battingTeam.logoUrl);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.primary,
         border: Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08))),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Total Score
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              // 1. Batting Team Logo & Name (Before the Score Runs)
               Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    '${innings.runs}/${innings.wickets}',
-                    style: GoogleFonts.outfit(
-                      fontSize: 32,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppColors.surfaceLight,
+                      border: Border.all(color: AppColors.accent.withValues(alpha: 0.6), width: 1.5),
+                    ),
+                    child: ClipOval(
+                      child: directLogoUrl.isNotEmpty
+                          ? CachedNetworkImage(
+                              imageUrl: directLogoUrl,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => _fallbackTeamAvatar(battingTeam.shortName),
+                            )
+                          : _fallbackTeamAvatar(battingTeam.shortName),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 100),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            'BATTING',
+                            style: GoogleFonts.outfit(
+                              fontSize: 8.5,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.accent,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          battingTeam.shortName.isNotEmpty ? battingTeam.shortName : battingTeam.name,
+                          style: GoogleFonts.outfit(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(width: 12),
+
+              // 2. Score Runs & Overs (Prominently next to Batting Team)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Text(
+                          '${innings.runs}/${innings.wickets}',
+                          style: GoogleFonts.outfit(
+                            fontSize: 26,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          '(${innings.oversString}/${match.maxOvers}.0)',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              // 3. Rates & Extras
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
                   Text(
-                    '(${innings.oversString}/${match.maxOvers}.0 ov)',
+                    'CRR: ${innings.crr.toStringAsFixed(2)}${rrr != null ? "\nRRR: ${rrr.toStringAsFixed(2)}" : ""}',
+                    textAlign: TextAlign.end,
                     style: GoogleFonts.outfit(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.accent,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'Extras: ${innings.totalExtras}',
+                    style: GoogleFonts.outfit(
+                      fontSize: 10.5,
+                      color: AppColors.textMuted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
                 ],
               ),
-              if (isChasing && target != null)
-                Text(
-                  CricketCalculator.targetEquation(
-                    target: target,
-                    currentRuns: innings.runs,
-                    maxBalls: match.maxBalls,
-                    ballsBowled: innings.balls,
-                  ),
-                  style: GoogleFonts.outfit(
-                    fontSize: 12,
-                    color: AppColors.accentCyan,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
             ],
           ),
 
-          // Rates & Extras
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                'CRR: ${innings.crr.toStringAsFixed(2)}${rrr != null ? " • RRR: ${rrr.toStringAsFixed(2)}" : ""}',
+          // Target Equation banner if chasing in 2nd innings
+          if (isChasing && target != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.accentCyan.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.3)),
+              ),
+              child: Text(
+                CricketCalculator.targetEquation(
+                  target: target,
+                  currentRuns: innings.runs,
+                  maxBalls: match.maxBalls,
+                  ballsBowled: innings.balls,
+                ),
                 style: GoogleFonts.outfit(
-                  fontSize: 13,
+                  fontSize: 11.5,
+                  color: AppColors.accentCyan,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.accent,
                 ),
               ),
-              Text(
-                'Extras: ${innings.totalExtras} (Wd ${innings.wides}, Nb ${innings.noBalls})',
-                style: GoogleFonts.outfit(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _fallbackTeamAvatar(String shortName) {
+    return Center(
+      child: Text(
+        shortName.isNotEmpty ? shortName[0] : 'T',
+        style: GoogleFonts.outfit(
+          fontSize: 13,
+          fontWeight: FontWeight.w900,
+          color: AppColors.textPrimary,
+        ),
       ),
     );
   }
