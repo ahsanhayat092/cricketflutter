@@ -368,7 +368,8 @@ class CricketScoringEngine {
     final newBowlerRuns = bowlerStat.runs + runsChargedToBowler;
     final newBowlerWickets = (input.isWicket &&
             input.wicketType != WicketType.runOutStriker &&
-            input.wicketType != WicketType.runOutNonStriker)
+            input.wicketType != WicketType.runOutNonStriker &&
+            input.wicketType != WicketType.retiredHurt)
         ? bowlerStat.wickets + 1
         : bowlerStat.wickets;
     final newBowlerWides = input.isWide ? bowlerStat.wides + 1 : bowlerStat.wides;

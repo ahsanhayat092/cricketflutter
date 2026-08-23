@@ -12,6 +12,7 @@ class WicketDialog extends StatefulWidget {
   final List<PlayerModel> bowlingSquad;
   final PlayerModel currentBowler;
   final bool isLastPossibleWicket; // 5th dismissal = ALL OUT
+  final BallContext initialBallContext;
 
   const WicketDialog({
     super.key,
@@ -21,6 +22,7 @@ class WicketDialog extends StatefulWidget {
     required this.bowlingSquad,
     required this.currentBowler,
     required this.isLastPossibleWicket,
+    this.initialBallContext = BallContext.normal,
   });
 
   @override
@@ -28,6 +30,7 @@ class WicketDialog extends StatefulWidget {
 }
 
 class _WicketDialogState extends State<WicketDialog> {
+  late BallContext _ballContext;
   WicketType _selectedWicketType = WicketType.bowled;
   late String _outBatsmanId;
   String? _incomingBatsmanId;
@@ -39,6 +42,7 @@ class _WicketDialogState extends State<WicketDialog> {
   @override
   void initState() {
     super.initState();
+    _ballContext = widget.initialBallContext;
     _outBatsmanId = widget.striker.id;
 
     if (widget.availableNextBatsmen.isNotEmpty && !widget.isLastPossibleWicket) {
@@ -53,6 +57,66 @@ class _WicketDialogState extends State<WicketDialog> {
       // Find designated wicketkeeper if any
       final wk = widget.bowlingSquad.where((p) => p.role.toUpperCase() == 'WICKET_KEEPER').firstOrNull;
       _selectedStumperId = wk?.id ?? widget.bowlingSquad.first.id;
+    }
+
+    _syncWicketTypeWithContext();
+  }
+
+  void _syncWicketTypeWithContext() {
+    final available = getAvailableDismissals(_ballContext);
+    final currentLabel = _getWicketTypeLabel(_selectedWicketType);
+    if (!available.contains(currentLabel)) {
+      if (available.contains('Run Out')) {
+        _selectedWicketType = _outBatsmanId == widget.striker.id
+            ? WicketType.runOutStriker
+            : WicketType.runOutNonStriker;
+      } else if (available.contains('Stumped')) {
+        _selectedWicketType = WicketType.stumped;
+      } else if (available.isNotEmpty) {
+        _selectedWicketType = _getWicketTypeFromLabel(available.first);
+      }
+    }
+  }
+
+  String _getWicketTypeLabel(WicketType type) {
+    switch (type) {
+      case WicketType.bowled:
+        return 'Bowled';
+      case WicketType.caught:
+        return 'Caught';
+      case WicketType.lbw:
+        return 'LBW';
+      case WicketType.stumped:
+        return 'Stumped';
+      case WicketType.hitWicket:
+        return 'Hit Wicket';
+      case WicketType.retiredHurt:
+        return 'Retired Hurt';
+      case WicketType.runOutStriker:
+      case WicketType.runOutNonStriker:
+        return 'Run Out';
+    }
+  }
+
+  WicketType _getWicketTypeFromLabel(String label) {
+    switch (label) {
+      case 'Bowled':
+        return WicketType.bowled;
+      case 'Caught':
+        return WicketType.caught;
+      case 'LBW':
+        return WicketType.lbw;
+      case 'Stumped':
+        return WicketType.stumped;
+      case 'Hit Wicket':
+        return WicketType.hitWicket;
+      case 'Retired Hurt':
+        return WicketType.retiredHurt;
+      case 'Run Out':
+      default:
+        return _outBatsmanId == widget.striker.id
+            ? WicketType.runOutStriker
+            : WicketType.runOutNonStriker;
     }
   }
 
@@ -112,6 +176,12 @@ class _WicketDialogState extends State<WicketDialog> {
           dismissalType: 'hit wicket',
           bowlerName: bowlerName,
         );
+
+      case WicketType.retiredHurt:
+        return formatDismissalText(
+          dismissalType: 'retired hurt',
+          bowlerName: bowlerName,
+        );
     }
   }
 
@@ -121,6 +191,7 @@ class _WicketDialogState extends State<WicketDialog> {
         _selectedWicketType == WicketType.runOutNonStriker;
     final isCaught = _selectedWicketType == WicketType.caught;
     final isStumped = _selectedWicketType == WicketType.stumped;
+    final availableDismissals = getAvailableDismissals(_ballContext);
 
     return Dialog(
       backgroundColor: AppColors.cardBackground,
@@ -170,9 +241,33 @@ class _WicketDialogState extends State<WicketDialog> {
                 ),
               ],
             ),
-            const SizedBox(height: 18),
+            const SizedBox(height: 16),
 
-            // 1. Select Out Batsman
+            // 1. Delivery Context Selector (Enforcing Cricket Laws)
+            Text(
+              'Delivery Context (Rules Enforcement):',
+              style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 6),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildContextChip(BallContext.normal, 'Normal Ball'),
+                  const SizedBox(width: 6),
+                  _buildContextChip(BallContext.noBall, 'No Ball (Nb+1)'),
+                  const SizedBox(width: 6),
+                  _buildContextChip(BallContext.wide, 'Wide (Wd+1)'),
+                  const SizedBox(width: 6),
+                  _buildContextChip(BallContext.bye, 'Bye'),
+                  const SizedBox(width: 6),
+                  _buildContextChip(BallContext.legBye, 'Leg Bye'),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+
+            // 2. Select Out Batsman
             Text(
               'Batsman Dismissed:',
               style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
@@ -212,32 +307,50 @@ class _WicketDialogState extends State<WicketDialog> {
             ),
             const SizedBox(height: 16),
 
-            // 2. Dismissal Type Grid
-            Text(
-              'Method of Dismissal:',
-              style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+            // 3. Dismissal Type Grid (Dynamically filtered by BallContext)
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Method of Dismissal:',
+                  style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
+                ),
+                if (_ballContext != BallContext.normal)
+                  Text(
+                    'Enforcing ${_contextRulesNote(_ballContext)}',
+                    style: GoogleFonts.outfit(fontSize: 10.5, fontWeight: FontWeight.w700, color: AppColors.accent),
+                  ),
+              ],
             ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 6,
               runSpacing: 6,
               children: [
-                _buildWicketTypeChip(WicketType.bowled, 'Bowled'),
-                _buildWicketTypeChip(WicketType.caught, 'Caught'),
-                _buildWicketTypeChip(WicketType.lbw, 'LBW'),
-                _buildWicketTypeChip(WicketType.stumped, 'Stumped'),
-                _buildWicketTypeChip(WicketType.hitWicket, 'Hit Wicket'),
-                _buildWicketTypeChip(
-                  _outBatsmanId == widget.striker.id
-                      ? WicketType.runOutStriker
-                      : WicketType.runOutNonStriker,
-                  'Run Out',
-                ),
+                if (availableDismissals.contains('Bowled'))
+                  _buildWicketTypeChip(WicketType.bowled, 'Bowled'),
+                if (availableDismissals.contains('Caught'))
+                  _buildWicketTypeChip(WicketType.caught, 'Caught'),
+                if (availableDismissals.contains('LBW'))
+                  _buildWicketTypeChip(WicketType.lbw, 'LBW'),
+                if (availableDismissals.contains('Stumped'))
+                  _buildWicketTypeChip(WicketType.stumped, 'Stumped'),
+                if (availableDismissals.contains('Hit Wicket'))
+                  _buildWicketTypeChip(WicketType.hitWicket, 'Hit Wicket'),
+                if (availableDismissals.contains('Run Out'))
+                  _buildWicketTypeChip(
+                    _outBatsmanId == widget.striker.id
+                        ? WicketType.runOutStriker
+                        : WicketType.runOutNonStriker,
+                    'Run Out',
+                  ),
+                if (availableDismissals.contains('Retired Hurt'))
+                  _buildWicketTypeChip(WicketType.retiredHurt, 'Retired Hurt'),
               ],
             ),
             const SizedBox(height: 16),
 
-            // 3. Conditional: CAUGHT BY (Catcher / Fielder dropdown)
+            // 4. Conditional: CAUGHT BY (Catcher / Fielder dropdown)
             if (isCaught && widget.bowlingSquad.isNotEmpty) ...[
               Text(
                 '🧤 Caught By (Catcher / Fielder):',
@@ -282,7 +395,7 @@ class _WicketDialogState extends State<WicketDialog> {
               const SizedBox(height: 16),
             ],
 
-            // 4. Conditional: STUMPED BY (Wicketkeeper dropdown)
+            // 5. Conditional: STUMPED BY (Wicketkeeper dropdown)
             if (isStumped && widget.bowlingSquad.isNotEmpty) ...[
               Text(
                 '🧤 Stumped By (Wicketkeeper / Fielder):',
@@ -322,7 +435,7 @@ class _WicketDialogState extends State<WicketDialog> {
               const SizedBox(height: 16),
             ],
 
-            // 5. Conditional: RUN OUT (Fielder dropdown & Runs completed)
+            // 6. Conditional: RUN OUT (Fielder dropdown & Runs completed)
             if (isRunOut) ...[
               if (widget.bowlingSquad.isNotEmpty) ...[
                 Text(
@@ -384,7 +497,7 @@ class _WicketDialogState extends State<WicketDialog> {
               const SizedBox(height: 16),
             ],
 
-            // 6. Incoming Batsman Selector (If not 5th wicket / all out)
+            // 7. Incoming Batsman Selector (If not 5th wicket / all out)
             if (!widget.isLastPossibleWicket && widget.availableNextBatsmen.isNotEmpty) ...[
               Text(
                 'Next Batsman to Crease:',
@@ -419,7 +532,7 @@ class _WicketDialogState extends State<WicketDialog> {
               const SizedBox(height: 16),
             ],
 
-            // 7. Live Scorecard Dismissal Preview Banner
+            // 8. Live Scorecard Dismissal Preview Banner
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
@@ -466,8 +579,27 @@ class _WicketDialogState extends State<WicketDialog> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                     ),
                     onPressed: () {
+                      ExtraType extraType = ExtraType.none;
+                      int extraRuns = 0;
+
+                      if (_ballContext == BallContext.noBall) {
+                        extraType = ExtraType.noBall;
+                        extraRuns = 1;
+                      } else if (_ballContext == BallContext.wide) {
+                        extraType = ExtraType.wide;
+                        extraRuns = 1;
+                      } else if (_ballContext == BallContext.bye) {
+                        extraType = ExtraType.bye;
+                        extraRuns = 1;
+                      } else if (_ballContext == BallContext.legBye) {
+                        extraType = ExtraType.legBye;
+                        extraRuns = 1;
+                      }
+
                       final input = BallDeliveryInput(
-                        runsOffBat: _runsCompleted,
+                        runsOffBat: isRunOut ? _runsCompleted : 0,
+                        extraType: extraType,
+                        extraRuns: extraRuns,
                         isWicket: true,
                         wicketType: _selectedWicketType,
                         outBatsmanId: _outBatsmanId,
@@ -488,6 +620,44 @@ class _WicketDialogState extends State<WicketDialog> {
         ),
       ),
     );
+  }
+
+  Widget _buildContextChip(BallContext context, String label) {
+    final isSelected = _ballContext == context;
+    return ChoiceChip(
+      label: Text(
+        label,
+        style: GoogleFonts.outfit(
+          fontSize: 11.5,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          color: isSelected ? Colors.black : AppColors.textPrimary,
+        ),
+      ),
+      selected: isSelected,
+      selectedColor: AppColors.accent,
+      side: BorderSide(color: isSelected ? AppColors.accent : Colors.white.withValues(alpha: 0.08)),
+      onSelected: (_) {
+        setState(() {
+          _ballContext = context;
+          _syncWicketTypeWithContext();
+        });
+      },
+    );
+  }
+
+  String _contextRulesNote(BallContext ctx) {
+    switch (ctx) {
+      case BallContext.noBall:
+        return 'No-Ball (Only Run Out)';
+      case BallContext.wide:
+        return 'Wide (Only Stumped / Run Out)';
+      case BallContext.bye:
+        return 'Bye (Only Run Out)';
+      case BallContext.legBye:
+        return 'Leg Bye (Only Run Out)';
+      case BallContext.normal:
+        return 'Standard Laws';
+    }
   }
 
   Widget _buildBatsmanChoice({
@@ -550,7 +720,13 @@ class _WicketDialogState extends State<WicketDialog> {
   Widget _buildWicketTypeChip(WicketType type, String label) {
     final isSelected = _selectedWicketType == type;
     return ChoiceChip(
-      label: Text(label, style: GoogleFonts.outfit(fontSize: 12, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+      label: Text(
+        label,
+        style: GoogleFonts.outfit(
+          fontSize: 12,
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
       selected: isSelected,
       selectedColor: AppColors.wicket.withValues(alpha: 0.25),
       side: BorderSide(color: isSelected ? AppColors.wicket : Colors.white.withValues(alpha: 0.08)),

@@ -87,5 +87,43 @@ void main() {
       );
       expect(text, equals('hit wicket b Shaheen Afridi'));
     });
+
+    test('Formats Retired Hurt correctly', () {
+      final text = formatDismissalText(
+        dismissalType: 'retired hurt',
+        bowlerName: 'Shaheen Afridi',
+      );
+      expect(text, equals('retired hurt'));
+    });
+  });
+
+  group('BallContext & Dismissals Enforcement Tests', () {
+    test('On No-Ball: only Run Out is allowed', () {
+      final dismissals = getAvailableDismissals(BallContext.noBall);
+      expect(dismissals, equals(['Run Out']));
+    });
+
+    test('On Wide: only Stumped and Run Out are allowed', () {
+      final dismissals = getAvailableDismissals(BallContext.wide);
+      expect(dismissals, equals(['Stumped', 'Run Out']));
+    });
+
+    test('On Bye: only Run Out is allowed', () {
+      final dismissals = getAvailableDismissals(BallContext.bye);
+      expect(dismissals, equals(['Run Out']));
+    });
+
+    test('On Leg-Bye: only Run Out is allowed', () {
+      final dismissals = getAvailableDismissals(BallContext.legBye);
+      expect(dismissals, equals(['Run Out']));
+    });
+
+    test('On Normal Delivery: all standard dismissals are allowed', () {
+      final dismissals = getAvailableDismissals(BallContext.normal);
+      expect(
+        dismissals,
+        equals(['Caught', 'Bowled', 'LBW', 'Run Out', 'Stumped', 'Hit Wicket', 'Retired Hurt']),
+      );
+    });
   });
 }

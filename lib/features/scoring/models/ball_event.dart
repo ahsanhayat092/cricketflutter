@@ -15,6 +15,7 @@ enum WicketType {
   stumped,
   lbw,
   hitWicket,
+  retiredHurt,
 }
 
 class BallDeliveryInput {
