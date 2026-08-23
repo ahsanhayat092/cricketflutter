@@ -348,10 +348,27 @@ class CricketScoringEngine {
           battingOrder: updatedBattingScores.length + 1,
         );
 
-        if (outPlayerId == strikerId) {
+        if (currentWickets == 5) {
+          // 5th wicket falls: 6th player now bats alone as Last Man Standing
           newStrikerId = newBatterId;
-        } else {
           newNonStrikerId = newBatterId;
+          celebrationType = 'LAST_MAN_STANDING';
+          celebrationText = '⚡ Last Man Standing! The 6th player is now batting alone.';
+        } else {
+          if (outPlayerId == strikerId) {
+            newStrikerId = newBatterId;
+          } else {
+            newNonStrikerId = newBatterId;
+          }
+        }
+      } else if (currentWickets == 5) {
+        // 5th wicket fell and all remaining players already in battingScores
+        final remainingBatter = updatedBattingScores.values.where((b) => !b.isOut).firstOrNull;
+        if (remainingBatter != null) {
+          newStrikerId = remainingBatter.playerId;
+          newNonStrikerId = remainingBatter.playerId;
+          celebrationType = 'LAST_MAN_STANDING';
+          celebrationText = '⚡ Last Man Standing! The 6th player is now batting alone.';
         }
       }
     }
@@ -389,7 +406,8 @@ class CricketScoringEngine {
       strikeRotatingRuns = input.extraRuns;
     }
 
-    if (strikeRotatingRuns % 2 == 1 && !input.isWicket) {
+    // Rotate strike on odd runs only if 2 batsmen are present (not Last Man Standing batting alone)
+    if (strikeRotatingRuns % 2 == 1 && !input.isWicket && newStrikerId != newNonStrikerId) {
       final temp = newStrikerId;
       newStrikerId = newNonStrikerId;
       newNonStrikerId = temp;
@@ -415,9 +433,12 @@ class CricketScoringEngine {
         celebrationText ??= 'MAIDEN OVER! 0 Runs Conceded!';
       }
 
-      final temp = newStrikerId;
-      newStrikerId = newNonStrikerId;
-      newNonStrikerId = temp;
+      // Rotate strike at over end only if 2 batsmen are present
+      if (newStrikerId != newNonStrikerId) {
+        final temp = newStrikerId;
+        newStrikerId = newNonStrikerId;
+        newNonStrikerId = temp;
+      }
     }
 
     bool allOut = currentWickets >= AppConstants.maxWicketsPerInnings;

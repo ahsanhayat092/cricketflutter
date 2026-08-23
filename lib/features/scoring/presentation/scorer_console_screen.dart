@@ -899,75 +899,106 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
       ),
       child: Column(
         children: [
-          if (canChangeOpeners)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+          if (striker.id == nonStriker.id) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.15),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+              ),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  const Icon(Icons.bolt, size: 16, color: AppColors.accent),
+                  const SizedBox(width: 6),
                   Text(
-                    'OPENING BATSMEN',
+                    '⚡ LAST MAN STANDING (BATTING ALONE)',
                     style: GoogleFonts.outfit(
                       fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textMuted,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.accent,
                       letterSpacing: 0.5,
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () async {
-                      final res = await showDialog<OpeningPlayersResult>(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (ctx) => OpeningPlayersDialog(
-                          title: 'CHANGE OPENERS & BOWLER',
-                          battingTeam: battingTeam,
-                          bowlingTeam: bowlingTeam,
-                          battingSquad: battingSquad,
-                          bowlingSquad: bowlingSquad,
-                          initialStrikerId: striker.id,
-                          initialNonStrikerId: nonStriker.id,
-                        ),
-                      );
-                      if (res != null) {
-                        ref.read(liveScoringControllerProvider(widget.matchId).notifier).setOpeners(
-                              strikerId: res.strikerId,
-                              nonStrikerId: res.nonStrikerId,
-                              bowlerId: res.bowlerId,
-                            );
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(8),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.edit_rounded, size: 13, color: AppColors.accentCyan),
-                          const SizedBox(width: 4),
-                          Text(
-                            'Change Openers',
-                            style: GoogleFonts.outfit(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.accentCyan,
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          _buildBatsmanRow(striker, strikerScore, isStriker: true),
-          const Divider(height: 1, color: Colors.white10),
-          _buildBatsmanRow(nonStriker, nonStrikerScore, isStriker: false),
+            _buildBatsmanRow(striker, strikerScore, isStriker: true, isBattingAlone: true),
+          ] else ...[
+            if (canChangeOpeners)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(14, 8, 14, 0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'OPENING BATSMEN',
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.textMuted,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () async {
+                        final res = await showDialog<OpeningPlayersResult>(
+                          context: context,
+                          barrierDismissible: false,
+                          builder: (ctx) => OpeningPlayersDialog(
+                            title: 'CHANGE OPENERS & BOWLER',
+                            battingTeam: battingTeam,
+                            bowlingTeam: bowlingTeam,
+                            battingSquad: battingSquad,
+                            bowlingSquad: bowlingSquad,
+                            initialStrikerId: striker.id,
+                            initialNonStrikerId: nonStriker.id,
+                          ),
+                        );
+                        if (res != null) {
+                          ref.read(liveScoringControllerProvider(widget.matchId).notifier).setOpeners(
+                                strikerId: res.strikerId,
+                                nonStrikerId: res.nonStrikerId,
+                                bowlerId: res.bowlerId,
+                              );
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.edit_rounded, size: 13, color: AppColors.accentCyan),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Change Openers',
+                              style: GoogleFonts.outfit(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.accentCyan,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            _buildBatsmanRow(striker, strikerScore, isStriker: true),
+            const Divider(height: 1, color: Colors.white10),
+            _buildBatsmanRow(nonStriker, nonStrikerScore, isStriker: false),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildBatsmanRow(PlayerModel player, BattingScore? score, {required bool isStriker}) {
+  Widget _buildBatsmanRow(
+    PlayerModel player,
+    BattingScore? score, {
+    required bool isStriker,
+    bool isBattingAlone = false,
+  }) {
     final runs = score?.runs ?? 0;
     final balls = score?.balls ?? 0;
     final fours = score?.fours ?? 0;
@@ -994,13 +1025,37 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  player.name,
-                  style: GoogleFonts.outfit(
-                    fontSize: 14,
-                    fontWeight: isStriker ? FontWeight.bold : FontWeight.w600,
-                    color: isStriker ? AppColors.textPrimary : AppColors.textSecondary,
-                  ),
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        player.name,
+                        style: GoogleFonts.outfit(
+                          fontSize: 14,
+                          fontWeight: isStriker ? FontWeight.bold : FontWeight.w600,
+                          color: isStriker ? AppColors.textPrimary : AppColors.textSecondary,
+                        ),
+                      ),
+                    ),
+                    if (isBattingAlone) ...[
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                        decoration: BoxDecoration(
+                          color: AppColors.accent.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'SOLO',
+                          style: GoogleFonts.outfit(
+                            fontSize: 9,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
                 Text(
                   '4s: $fours • 6s: $sixes • SR: ${sr.toStringAsFixed(1)}',

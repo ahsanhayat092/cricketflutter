@@ -228,7 +228,7 @@ class _WicketDialogState extends State<WicketDialog> {
                       ),
                       Text(
                         widget.isLastPossibleWicket
-                            ? '5th Wicket - Team will be ALL OUT'
+                            ? '6th Wicket - Team will be ALL OUT'
                             : 'Select dismissal method & incoming batsman',
                         style: GoogleFonts.outfit(
                           fontSize: 11,
@@ -497,10 +497,12 @@ class _WicketDialogState extends State<WicketDialog> {
               const SizedBox(height: 16),
             ],
 
-            // 7. Incoming Batsman Selector (If not 5th wicket / all out)
+            // 7. Incoming Batsman Selector (If not 6th wicket / all out)
             if (!widget.isLastPossibleWicket && widget.availableNextBatsmen.isNotEmpty) ...[
               Text(
-                'Next Batsman to Crease:',
+                widget.availableNextBatsmen.length == 1
+                    ? '6th Batsman (Last Man Standing):'
+                    : 'Next Batsman to Crease:',
                 style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
               ),
               const SizedBox(height: 6),

@@ -217,12 +217,12 @@ void main() {
       expect(res.battingScores['p1']?.balls, 0); // Batsman ball not incremented
     });
 
-    test('5 Wickets triggers ALL OUT and completes innings', () {
-      final almostAllOutInnings = testInnings1.copyWith(wickets: 4);
+    test('5th Wicket triggers Last Man Standing transition (6th player bats alone)', () {
+      final fourWicketsInnings = testInnings1.copyWith(wickets: 4);
 
       final res = CricketScoringEngine.processDelivery(
         match: testMatch,
-        innings: almostAllOutInnings,
+        innings: fourWicketsInnings,
         firstInningsTotalRuns: null,
         battingScores: {},
         bowlingScores: {},
@@ -234,11 +234,42 @@ void main() {
           isWicket: true,
           wicketType: WicketType.bowled,
           outBatsmanId: 'p5',
+          newBatsmanId: 'p6',
           dismissalDescription: 'b b1',
         ),
       );
 
       expect(res.innings.wickets, 5);
+      expect(res.innings.allOut, isFalse); // 5th wicket is NOT all out (Last Man Standing)
+      expect(res.isInningsCompleted, isFalse);
+      expect(res.celebrationType, 'LAST_MAN_STANDING');
+      expect(res.celebrationText, '⚡ Last Man Standing! The 6th player is now batting alone.');
+      expect(res.strikerId, 'p6');
+      expect(res.nonStrikerId, 'p6'); // Solitary batsman
+    });
+
+    test('6 Wickets triggers ALL OUT and completes innings', () {
+      final fiveWicketsInnings = testInnings1.copyWith(wickets: 5);
+
+      final res = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: fiveWicketsInnings,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: {},
+        strikerId: 'p6',
+        nonStrikerId: 'p6',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(
+          isWicket: true,
+          wicketType: WicketType.bowled,
+          outBatsmanId: 'p6',
+          dismissalDescription: 'b b1',
+        ),
+      );
+
+      expect(res.innings.wickets, 6);
       expect(res.innings.allOut, isTrue);
       expect(res.innings.completed, isTrue);
       expect(res.isInningsCompleted, isTrue);
@@ -266,31 +297,31 @@ void main() {
       expect(res.isInningsCompleted, isTrue);
       expect(res.match.status, 'COMPLETED');
       expect(res.match.winnerTeamId, 'team-b');
-      expect(res.match.resultText, 'Team Bravo won by 5 wickets');
+      expect(res.match.resultText, 'Team Bravo won by 6 wickets');
     });
 
-    test('2nd Innings 5 Wickets All Out ends match with bowling team winning by run margin and team name', () {
-      final almostAllOutChasingInnings = testInnings2.copyWith(runs: 42, wickets: 4);
+    test('2nd Innings 6 Wickets All Out ends match with bowling team winning by run margin and team name', () {
+      final almostAllOutChasingInnings = testInnings2.copyWith(runs: 42, wickets: 5);
 
       final res = CricketScoringEngine.processDelivery(
         match: testMatch,
         innings: almostAllOutChasingInnings,
-        firstInningsTotalRuns: 100, // Target was 101, Chasing team at 42 runs, 4 wkts
+        firstInningsTotalRuns: 100, // Target was 101, Chasing team at 42 runs, 5 wkts
         battingScores: {},
         bowlingScores: {},
-        strikerId: 'b5',
+        strikerId: 'b6',
         nonStrikerId: 'b6',
         bowlerId: 'p1',
         previousBowlerId: null,
         input: const BallDeliveryInput(
           isWicket: true,
           wicketType: WicketType.bowled,
-          outBatsmanId: 'b5',
+          outBatsmanId: 'b6',
         ),
         teamNames: {'team-a': 'Royal Strikers', 'team-b': 'Super Kings'},
       );
 
-      expect(res.innings.wickets, 5);
+      expect(res.innings.wickets, 6);
       expect(res.innings.allOut, isTrue);
       expect(res.isMatchCompleted, isTrue);
       expect(res.isInningsCompleted, isTrue);

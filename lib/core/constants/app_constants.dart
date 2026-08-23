@@ -8,7 +8,7 @@ class AppConstants {
   static const int reserveSquadSize = 1;
 
   // Wickets Rule
-  static const int maxWicketsPerInnings = 5; // 5 dismissals = ALL OUT in 6-a-side
+  static const int maxWicketsPerInnings = 6; // 6 dismissals = ALL OUT with Last Man Standing in 6-a-side
 
   // Overs Rules
   static const int ballsPerOver = 6;
