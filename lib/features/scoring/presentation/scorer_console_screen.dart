@@ -404,6 +404,12 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     }
 
     final allPlayers = ref.watch(playersProvider).value ?? [];
+    if (allPlayers.isNotEmpty && scoringState.playerNames.isEmpty) {
+      final names = {for (var p in allPlayers) p.id: p.name};
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(liveScoringControllerProvider(widget.matchId).notifier).setPlayerNames(names);
+      });
+    }
     final match = scoringState.match;
     final innings = scoringState.innings;
 

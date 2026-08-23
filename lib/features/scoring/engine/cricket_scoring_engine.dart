@@ -193,6 +193,7 @@ class CricketScoringEngine {
     required String? previousBowlerId,
     required BallDeliveryInput input,
     Map<String, String>? teamNames,
+    Map<String, String>? playerNames,
   }) {
     var updatedBattingScores = Map<String, BattingScore>.from(battingScores);
     var updatedBowlingScores = Map<String, BowlingScore>.from(bowlingScores);
@@ -309,19 +310,22 @@ class CricketScoringEngine {
     // Check Celebrations
     if (input.runsOffBat == 6) {
       celebrationType = 'SIX';
-      celebrationText = 'MAXIMUM! 6 Runs!';
+      final sName = playerNames?[strikerId] ?? 'Batter';
+      celebrationText = '$sName launches a colossal SIX! 🚀';
     } else if (input.runsOffBat == 4) {
       celebrationType = 'FOUR';
-      celebrationText = 'CRACKING FOUR! 4 Runs!';
+      final sName = playerNames?[strikerId] ?? 'Batter';
+      celebrationText = '$sName smashes a boundary FOUR! 🏏';
     }
 
     // 3. Process Wicket
     if (input.isWicket) {
       currentWickets += 1;
       celebrationType = 'WICKET';
-      celebrationText = 'WICKET FALLS!';
-
       final outPlayerId = input.outBatsmanId ?? strikerId;
+      final outBatsmanName = playerNames?[outPlayerId] ?? 'Batter';
+      final dismissalText = input.dismissalDescription ?? 'Out';
+      celebrationText = '$outBatsmanName is OUT ($dismissalText)! 🔴';
       final outPlayerStat = updatedBattingScores[outPlayerId] ??
           BattingScore(
             id: '${innings.id}_$outPlayerId',
@@ -482,10 +486,29 @@ class CricketScoringEngine {
     // Update Match Model
     RecentEvent? newRecentEvent;
     if (celebrationType != null) {
+      final sName = playerNames?[strikerId] ?? 'Batter';
+      final bName = playerNames?[bowlerId] ?? 'Bowler';
+      final outPlayerId = input.outBatsmanId ?? strikerId;
+      final outBatsmanName = playerNames?[outPlayerId] ?? 'Batter';
+
+      String? eventBatterName;
+      String? eventBowlerName = bName;
+      String? eventDismissal;
+
+      if (celebrationType == 'WICKET') {
+        eventBatterName = outBatsmanName;
+        eventDismissal = input.dismissalDescription ?? 'Out';
+      } else if (celebrationType == 'FOUR' || celebrationType == 'SIX') {
+        eventBatterName = sName;
+      }
+
       newRecentEvent = RecentEvent(
         type: celebrationType,
         text: celebrationText ?? celebrationType,
         timestamp: DateTime.now().millisecondsSinceEpoch,
+        batterName: eventBatterName,
+        bowlerName: eventBowlerName,
+        dismissal: eventDismissal,
       );
     }
 

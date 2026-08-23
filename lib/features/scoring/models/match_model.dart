@@ -4,11 +4,17 @@ class RecentEventModel {
   final String type; // "FOUR" | "SIX" | "WICKET" | "MAIDEN"
   final String text;
   final int timestamp;
+  final String? batterName;
+  final String? bowlerName;
+  final String? dismissal;
 
   const RecentEventModel({
     required this.type,
     required this.text,
     required this.timestamp,
+    this.batterName,
+    this.bowlerName,
+    this.dismissal,
   });
 
   factory RecentEventModel.fromMap(Map<String, dynamic>? data) {
@@ -23,15 +29,28 @@ class RecentEventModel {
       type: data['type'] as String? ?? '',
       text: data['text'] as String? ?? '',
       timestamp: (data['timestamp'] as num?)?.toInt() ?? 0,
+      batterName: data['batterName'] as String?,
+      bowlerName: data['bowlerName'] as String?,
+      dismissal: data['dismissal'] as String?,
     );
   }
 
   Map<String, dynamic> toMap() {
-    return {
+    final map = <String, dynamic>{
       'type': type,
       'text': text,
       'timestamp': timestamp,
     };
+    if (batterName != null && batterName!.isNotEmpty) {
+      map['batterName'] = batterName;
+    }
+    if (bowlerName != null && bowlerName!.isNotEmpty) {
+      map['bowlerName'] = bowlerName;
+    }
+    if (dismissal != null && dismissal!.isNotEmpty) {
+      map['dismissal'] = dismissal;
+    }
+    return map;
   }
 }
 

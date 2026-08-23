@@ -32,6 +32,7 @@ class ScoringState {
   final bool isSyncing;
   final String? lastSyncError;
   final Map<String, String> teamNames;
+  final Map<String, String> playerNames;
   final bool isLoading;
 
   const ScoringState({
@@ -52,6 +53,7 @@ class ScoringState {
     this.isSyncing = false,
     this.lastSyncError,
     this.teamNames = const {},
+    this.playerNames = const {},
     this.isLoading = true,
   });
 
@@ -77,6 +79,7 @@ class ScoringState {
     bool? isSyncing,
     String? lastSyncError,
     Map<String, String>? teamNames,
+    Map<String, String>? playerNames,
     bool? isLoading,
   }) {
     return ScoringState(
@@ -97,6 +100,7 @@ class ScoringState {
       isSyncing: isSyncing ?? this.isSyncing,
       lastSyncError: lastSyncError,
       teamNames: teamNames ?? this.teamNames,
+      playerNames: playerNames ?? this.playerNames,
       isLoading: isLoading ?? this.isLoading,
     );
   }
@@ -165,6 +169,16 @@ class ScoringController extends StateNotifier<ScoringState> {
           debugPrint('[ScoringController] Error fetching team names: $e');
         }
 
+        final Map<String, String> playerNames = {};
+        try {
+          final players = await _service.getPlayers();
+          for (final p in players) {
+            playerNames[p.id] = p.name;
+          }
+        } catch (e) {
+          debugPrint('[ScoringController] Error fetching players: $e');
+        }
+
         final inningsList = await _service.getInningsForMatch(matchId);
         if (inningsList.isNotEmpty) {
           final currentInnings = inningsList.last;
@@ -195,6 +209,7 @@ class ScoringController extends StateNotifier<ScoringState> {
             clearCurrentBowler: isOverEnded,
             isNeedBowlerSelection: isOverEnded && !currentInnings.completed,
             teamNames: teamNames,
+            playerNames: playerNames,
             isLoading: false,
           );
         } else {
@@ -226,8 +241,9 @@ class ScoringController extends StateNotifier<ScoringState> {
             innings: initialInnings,
             strikerId: s1,
             nonStrikerId: s2,
-            currentBowlerId: b1,
+            isNeedBowlerSelection: false,
             teamNames: teamNames,
+            playerNames: playerNames,
             isLoading: false,
           );
         }
@@ -240,7 +256,11 @@ class ScoringController extends StateNotifier<ScoringState> {
     }
   }
 
-  /// Change or Select Active Bowler
+  void setPlayerNames(Map<String, String> names) {
+    state = state.copyWith(playerNames: {...state.playerNames, ...names});
+  }
+
+  /// Change/Select current bowler
   void setCurrentBowler(String bowlerId) {
     // Over Guard: Bowler cannot be changed mid-over once legal balls have been bowled in current over
     final isMidOver = state.innings.balls > 0 && (state.innings.balls % 6 != 0);
@@ -372,6 +392,7 @@ class ScoringController extends StateNotifier<ScoringState> {
       previousBowlerId: state.previousBowlerId,
       input: input,
       teamNames: state.teamNames,
+      playerNames: state.playerNames,
     );
 
     // 3. Update Local State Immediately (clearing bowler if over finished)

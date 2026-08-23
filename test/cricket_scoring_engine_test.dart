@@ -99,6 +99,98 @@ void main() {
       expect(sixRes.battingScores['p1']?.sixes, 1);
     });
 
+    test('RecentEvent includes batterName, bowlerName, and dismissal for Wicket and Boundaries', () {
+      final playerNames = {
+        'p1': 'Babar Azam',
+        'p2': 'Mohammad Rizwan',
+        'p3': 'Fakhar Zaman',
+        'b1': 'Shaheen Afridi',
+      };
+
+      // 1. FOUR Event
+      final fourRes = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: testInnings1,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: {},
+        strikerId: 'p1',
+        nonStrikerId: 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(runsOffBat: 4),
+        playerNames: playerNames,
+      );
+
+      final fourEvent = fourRes.match.recentEvent;
+      expect(fourEvent, isNotNull);
+      expect(fourEvent!.type, 'FOUR');
+      expect(fourEvent.batterName, 'Babar Azam');
+      expect(fourEvent.bowlerName, 'Shaheen Afridi');
+      expect(fourEvent.text, 'Babar Azam smashes a boundary FOUR! 🏏');
+
+      final fourMap = fourEvent.toMap();
+      expect(fourMap['batterName'], 'Babar Azam');
+      expect(fourMap['bowlerName'], 'Shaheen Afridi');
+      expect(fourMap['type'], 'FOUR');
+
+      // 2. SIX Event
+      final sixRes = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: testInnings1,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: {},
+        strikerId: 'p1',
+        nonStrikerId: 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(runsOffBat: 6),
+        playerNames: playerNames,
+      );
+
+      final sixEvent = sixRes.match.recentEvent;
+      expect(sixEvent, isNotNull);
+      expect(sixEvent!.type, 'SIX');
+      expect(sixEvent.batterName, 'Babar Azam');
+      expect(sixEvent.bowlerName, 'Shaheen Afridi');
+      expect(sixEvent.text, 'Babar Azam launches a colossal SIX! 🚀');
+
+      // 3. WICKET Event
+      final wicketRes = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: testInnings1,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: {},
+        strikerId: 'p1',
+        nonStrikerId: 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(
+          isWicket: true,
+          wicketType: WicketType.caught,
+          outBatsmanId: 'p1',
+          newBatsmanId: 'p3',
+          dismissalDescription: 'c Fakhar Zaman b Shaheen Afridi',
+        ),
+        playerNames: playerNames,
+      );
+
+      final wicketEvent = wicketRes.match.recentEvent;
+      expect(wicketEvent, isNotNull);
+      expect(wicketEvent!.type, 'WICKET');
+      expect(wicketEvent.batterName, 'Babar Azam');
+      expect(wicketEvent.bowlerName, 'Shaheen Afridi');
+      expect(wicketEvent.dismissal, 'c Fakhar Zaman b Shaheen Afridi');
+      expect(wicketEvent.text, 'Babar Azam is OUT (c Fakhar Zaman b Shaheen Afridi)! 🔴');
+
+      final wicketMap = wicketEvent.toMap();
+      expect(wicketMap['batterName'], 'Babar Azam');
+      expect(wicketMap['bowlerName'], 'Shaheen Afridi');
+      expect(wicketMap['dismissal'], 'c Fakhar Zaman b Shaheen Afridi');
+    });
+
     test('Wide adds 1 extra run without consuming legal ball', () {
       final res = CricketScoringEngine.processDelivery(
         match: testMatch,
