@@ -205,6 +205,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     PlayerModel striker,
     PlayerModel nonStriker,
     List<PlayerModel> battingSquad,
+    List<PlayerModel> bowlingSquad,
     PlayerModel currentBowler,
     int currentWickets,
   ) async {
@@ -227,6 +228,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
         striker: striker,
         nonStriker: nonStriker,
         availableNextBatsmen: unbattedPlayers,
+        bowlingSquad: bowlingSquad,
         currentBowler: currentBowler,
         isLastPossibleWicket: isLastWicket,
       ),
@@ -1308,6 +1310,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                             striker,
                             nonStriker,
                             battingSquad,
+                            bowlingSquad,
                             currentBowler,
                             currentWickets,
                           );
