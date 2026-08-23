@@ -118,6 +118,11 @@ void main() {
       expect(dismissals, equals(['Run Out']));
     });
 
+    test('On Free Hit: only Run Out is allowed', () {
+      final dismissals = getAvailableDismissals(BallContext.freeHit);
+      expect(dismissals, equals(['Run Out']));
+    });
+
     test('On Normal Delivery: all standard dismissals are allowed', () {
       final dismissals = getAvailableDismissals(BallContext.normal);
       expect(

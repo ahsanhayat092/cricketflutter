@@ -9,6 +9,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/cricket_calculator.dart';
 import '../../../core/utils/image_url_helper.dart';
+import '../../../core/utils/dismissal_helper.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../models/ball_event.dart';
@@ -220,6 +221,8 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
         battingSquad.where((p) => !usedPlayerIds.contains(p.id)).toList();
 
     final isLastWicket = (currentWickets + 1) >= AppConstants.maxWicketsPerInnings;
+    final currentState = ref.read(liveScoringControllerProvider(widget.matchId));
+    final isFreeHit = currentState.innings.isFreeHit;
 
     final BallDeliveryInput? input = await showDialog<BallDeliveryInput>(
       context: context,
@@ -231,6 +234,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
         bowlingSquad: bowlingSquad,
         currentBowler: currentBowler,
         isLastPossibleWicket: isLastWicket,
+        initialBallContext: isFreeHit ? BallContext.freeHit : BallContext.normal,
       ),
     );
 
@@ -748,6 +752,36 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
               ),
             ],
           ),
+
+          // Free Hit Banner if active
+          if (innings.isFreeHit) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.accent, width: 1.2),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.bolt, color: AppColors.accent, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    '🎯 FREE HIT ACTIVE (ONLY RUN OUT PERMITTED)',
+                    style: GoogleFonts.outfit(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.accent,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
 
           // Target Equation banner if chasing in 2nd innings
           if (isChasing && target != null) ...[

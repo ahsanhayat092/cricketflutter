@@ -1,15 +1,16 @@
 /// Context of the delivery being bowled when a dismissal occurs.
-enum BallContext { normal, noBall, wide, bye, legBye }
+enum BallContext { normal, noBall, wide, bye, legBye, freeHit }
 
 /// Returns the strictly allowed cricket dismissals based on delivery context.
-/// - No-Ball: Only Run Out allowed
+/// - No-Ball / Free Hit: Only Run Out allowed
 /// - Wide: Only Stumped & Run Out allowed
 /// - Bye / Leg-Bye: Only Run Out allowed
 /// - Normal: All standard cricket dismissals allowed
 List<String> getAvailableDismissals(BallContext context) {
   switch (context) {
     case BallContext.noBall:
-      return ['Run Out']; // Only Run Out allowed on No-Ball
+    case BallContext.freeHit:
+      return ['Run Out']; // Only Run Out allowed on No-Ball or Free Hit
 
     case BallContext.wide:
       return ['Stumped', 'Run Out']; // Stumped & Run Out on Wide

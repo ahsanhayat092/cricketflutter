@@ -469,6 +469,23 @@ class CricketScoringEngine {
       recentBallsList.removeAt(0);
     }
 
+    // Calculate Free Hit state for next delivery:
+    // - No-Ball: triggers a Free Hit on the next ball
+    // - Wide: preserves active Free Hit (illegal ball does not consume Free Hit)
+    // - Legal delivery: consumes Free Hit
+    bool nextFreeHit = false;
+    if (input.isNoBall) {
+      nextFreeHit = true;
+      if (celebrationType == null) {
+        celebrationType = 'FREE_HIT';
+        celebrationText = 'NO BALL! 🎯 FREE HIT NEXT!';
+      }
+    } else if (input.isWide) {
+      nextFreeHit = innings.isFreeHit;
+    } else {
+      nextFreeHit = false;
+    }
+
     // Update Innings Model
     final updatedInnings = innings.copyWith(
       runs: currentRuns,
@@ -481,6 +498,7 @@ class CricketScoringEngine {
       penaltyRuns: currentPenalty,
       completed: isInningsCompleted,
       allOut: allOut,
+      isFreeHit: nextFreeHit,
       recentBalls: recentBallsList,
     );
 

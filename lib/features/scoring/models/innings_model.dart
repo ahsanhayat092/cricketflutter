@@ -17,6 +17,7 @@ class InningsModel {
   final int penaltyRuns;
   final bool allOut;
   final bool completed;
+  final bool isFreeHit;
   final List<String> recentBalls;
   final String? createdAt;
   final String? updatedAt;
@@ -37,6 +38,7 @@ class InningsModel {
     this.penaltyRuns = 0,
     this.allOut = false,
     this.completed = false,
+    this.isFreeHit = false,
     this.recentBalls = const [],
     this.createdAt,
     this.updatedAt,
@@ -72,6 +74,7 @@ class InningsModel {
       penaltyRuns: (data['penaltyRuns'] as num?)?.toInt() ?? 0,
       allOut: data['allOut'] as bool? ?? false,
       completed: data['completed'] as bool? ?? false,
+      isFreeHit: data['isFreeHit'] as bool? ?? false,
       recentBalls: (data['recentBalls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
       createdAt: data['createdAt'] as String?,
       updatedAt: data['updatedAt'] as String?,
@@ -100,6 +103,7 @@ class InningsModel {
       'penaltyRuns': penaltyRuns,
       'allOut': allOut,
       'completed': completed,
+      'isFreeHit': isFreeHit,
       'recentBalls': recentBalls,
       if (createdAt != null) 'createdAt': createdAt,
       'updatedAt': updatedAt ?? DateTime.now().toIso8601String(),
@@ -124,6 +128,7 @@ class InningsModel {
     int? penaltyRuns,
     bool? allOut,
     bool? completed,
+    bool? isFreeHit,
     List<String>? recentBalls,
     String? createdAt,
     String? updatedAt,
@@ -144,6 +149,7 @@ class InningsModel {
       penaltyRuns: penaltyRuns ?? this.penaltyRuns,
       allOut: allOut ?? this.allOut,
       completed: completed ?? this.completed,
+      isFreeHit: isFreeHit ?? this.isFreeHit,
       recentBalls: recentBalls ?? this.recentBalls,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

@@ -438,5 +438,71 @@ void main() {
       expect(res.currentBowlerId, isNull);
       expect(res.innings.balls, 6); // Ball not added
     });
+
+    test('Free Hit lifecycle: No-Ball triggers, Wide preserves, and legal ball consumes Free Hit', () {
+      // 1. Initial ball: No-Ball is bowled
+      final nbRes = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: testInnings1,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: {},
+        strikerId: 'p1',
+        nonStrikerId: 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(
+          extraType: ExtraType.noBall,
+          extraRuns: 1,
+          runsOffBat: 0,
+        ),
+      );
+
+      // Next ball MUST be a Free Hit
+      expect(nbRes.innings.isFreeHit, isTrue);
+      expect(nbRes.innings.noBalls, 1);
+      expect(nbRes.innings.balls, 0); // No-ball does not consume legal ball
+
+      // 2. Next delivery is a Wide on Free Hit: Free Hit must NOT be consumed
+      final wideOnFhRes = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: nbRes.innings, // isFreeHit is true
+        firstInningsTotalRuns: null,
+        battingScores: nbRes.battingScores,
+        bowlingScores: nbRes.bowlingScores,
+        strikerId: nbRes.strikerId ?? 'p1',
+        nonStrikerId: nbRes.nonStrikerId ?? 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(
+          extraType: ExtraType.wide,
+          extraRuns: 1,
+        ),
+      );
+
+      // Free Hit remains active because Wide is an illegal delivery
+      expect(wideOnFhRes.innings.isFreeHit, isTrue);
+      expect(wideOnFhRes.innings.wides, 1);
+      expect(wideOnFhRes.innings.balls, 0);
+
+      // 3. Next delivery is a legal ball (e.g. 2 runs scored)
+      final legalFhRes = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: wideOnFhRes.innings, // isFreeHit is true
+        firstInningsTotalRuns: null,
+        battingScores: wideOnFhRes.battingScores,
+        bowlingScores: wideOnFhRes.bowlingScores,
+        strikerId: wideOnFhRes.strikerId ?? 'p1',
+        nonStrikerId: wideOnFhRes.nonStrikerId ?? 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(runsOffBat: 2),
+      );
+
+      // Free Hit is now consumed after the legal delivery!
+      expect(legalFhRes.innings.isFreeHit, isFalse);
+      expect(legalFhRes.innings.balls, 1);
+      expect(legalFhRes.innings.runs, 4); // 1 (nb) + 1 (wd) + 2 (runs)
+    });
   });
 }

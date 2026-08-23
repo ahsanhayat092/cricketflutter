@@ -649,6 +649,8 @@ class _WicketDialogState extends State<WicketDialog> {
     switch (ctx) {
       case BallContext.noBall:
         return 'No-Ball (Only Run Out)';
+      case BallContext.freeHit:
+        return 'Free Hit (Only Run Out)';
       case BallContext.wide:
         return 'Wide (Only Stumped / Run Out)';
       case BallContext.bye:

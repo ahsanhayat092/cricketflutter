@@ -158,6 +158,26 @@ class LiveScoreboardBanner extends StatelessWidget {
                           color: AppColors.textSecondary,
                         ),
                       ),
+                      if (innings.isFreeHit) ...[
+                        const SizedBox(height: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppColors.accent.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: AppColors.accent, width: 1),
+                          ),
+                          child: Text(
+                            '⚡ FREE HIT',
+                            style: GoogleFonts.outfit(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.accent,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
