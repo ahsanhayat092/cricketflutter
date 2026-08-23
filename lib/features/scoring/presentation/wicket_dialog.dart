@@ -10,8 +10,10 @@ class WicketDialog extends StatefulWidget {
   final PlayerModel nonStriker;
   final List<PlayerModel> availableNextBatsmen;
   final List<PlayerModel> bowlingSquad;
+  final List<PlayerModel>? fieldingSquad; // All squad members of fielding team (Starters + Reserves)
+  final Set<String>? playingVIIds; // Set of Playing VI IDs
   final PlayerModel currentBowler;
-  final bool isLastPossibleWicket; // 5th dismissal = ALL OUT
+  final bool isLastPossibleWicket; // 6th dismissal = ALL OUT
   final BallContext initialBallContext;
 
   const WicketDialog({
@@ -20,6 +22,8 @@ class WicketDialog extends StatefulWidget {
     required this.nonStriker,
     required this.availableNextBatsmen,
     required this.bowlingSquad,
+    this.fieldingSquad,
+    this.playingVIIds,
     required this.currentBowler,
     required this.isLastPossibleWicket,
     this.initialBallContext = BallContext.normal,
@@ -49,17 +53,31 @@ class _WicketDialogState extends State<WicketDialog> {
       _incomingBatsmanId = widget.availableNextBatsmen.first.id;
     }
 
-    if (widget.bowlingSquad.isNotEmpty) {
+    final fielders = _effectiveFieldingSquad;
+    if (fielders.isNotEmpty) {
       // Default catcher to first fielder or bowler
-      _selectedCatcherId = widget.bowlingSquad.first.id;
-      _selectedRunOutFielderId = widget.bowlingSquad.first.id;
+      _selectedCatcherId = fielders.first.id;
+      _selectedRunOutFielderId = fielders.first.id;
 
       // Find designated wicketkeeper if any
-      final wk = widget.bowlingSquad.where((p) => p.role.toUpperCase() == 'WICKET_KEEPER').firstOrNull;
-      _selectedStumperId = wk?.id ?? widget.bowlingSquad.first.id;
+      final wk = fielders.where((p) => p.role.toUpperCase() == 'WICKET_KEEPER' || p.role.toLowerCase().contains('keeper')).firstOrNull;
+      _selectedStumperId = wk?.id ?? fielders.first.id;
     }
 
     _syncWicketTypeWithContext();
+  }
+
+  List<PlayerModel> get _effectiveFieldingSquad =>
+      (widget.fieldingSquad != null && widget.fieldingSquad!.isNotEmpty)
+          ? widget.fieldingSquad!
+          : widget.bowlingSquad;
+
+  bool _isPlayerReserve(PlayerModel player) {
+    if (widget.playingVIIds != null && widget.playingVIIds!.isNotEmpty) {
+      return !widget.playingVIIds!.contains(player.id);
+    }
+    if (!player.isPlayingVI) return true;
+    return player.designation?.toLowerCase().contains('reserve') ?? false;
   }
 
   void _syncWicketTypeWithContext() {
@@ -123,7 +141,7 @@ class _WicketDialogState extends State<WicketDialog> {
   PlayerModel? _findPlayer(String? id) {
     if (id == null) return null;
     try {
-      return widget.bowlingSquad.firstWhere((p) => p.id == id);
+      return _effectiveFieldingSquad.firstWhere((p) => p.id == id);
     } catch (_) {
       return null;
     }
@@ -350,8 +368,8 @@ class _WicketDialogState extends State<WicketDialog> {
             ),
             const SizedBox(height: 16),
 
-            // 4. Conditional: CAUGHT BY (Catcher / Fielder dropdown)
-            if (isCaught && widget.bowlingSquad.isNotEmpty) ...[
+            // 4. Conditional: CAUGHT BY (Fielder dropdown)
+            if (isCaught && _effectiveFieldingSquad.isNotEmpty) ...[
               Text(
                 '🧤 Caught By (Catcher / Fielder):',
                 style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
@@ -368,21 +386,30 @@ class _WicketDialogState extends State<WicketDialog> {
                   child: DropdownButton<String>(
                     isExpanded: true,
                     dropdownColor: AppColors.cardBackground,
-                    value: _selectedCatcherId ?? widget.bowlingSquad.first.id,
-                    items: widget.bowlingSquad.map((player) {
+                    value: _selectedCatcherId ?? _effectiveFieldingSquad.first.id,
+                    items: _effectiveFieldingSquad.map((player) {
                       final isBowler = player.id == widget.currentBowler.id;
-                      final isWK = player.role.toUpperCase() == 'WICKET_KEEPER';
-                      final label = isBowler
-                          ? '🎯 ${player.name} (Bowler — Caught & Bowled)'
-                          : '🧤 ${player.name}${isWK ? " (WK)" : ""}';
+                      final isWK = player.role.toUpperCase() == 'WICKET_KEEPER' || player.role.toLowerCase().contains('keeper');
+                      final isReserve = _isPlayerReserve(player);
+
+                      String label;
+                      if (isBowler) {
+                        label = '🎯 ${player.name} (Bowler — Caught & Bowled)';
+                      } else if (isReserve) {
+                        label = '🛡️ ${player.name} (Reserve Fielder)';
+                      } else {
+                        label = '🧤 ${player.name}${isWK ? " (WK)" : ""}';
+                      }
 
                       return DropdownMenuItem<String>(
                         value: player.id,
                         child: Text(
                           label,
                           style: GoogleFonts.outfit(
-                            color: isBowler ? AppColors.accent : AppColors.textPrimary,
-                            fontWeight: isBowler ? FontWeight.bold : FontWeight.normal,
+                            color: isBowler
+                                ? AppColors.accent
+                                : (isReserve ? AppColors.accentCyan : AppColors.textPrimary),
+                            fontWeight: (isBowler || isReserve) ? FontWeight.bold : FontWeight.normal,
                             fontSize: 13,
                           ),
                         ),
@@ -396,7 +423,7 @@ class _WicketDialogState extends State<WicketDialog> {
             ],
 
             // 5. Conditional: STUMPED BY (Wicketkeeper dropdown)
-            if (isStumped && widget.bowlingSquad.isNotEmpty) ...[
+            if (isStumped && _effectiveFieldingSquad.isNotEmpty) ...[
               Text(
                 '🧤 Stumped By (Wicketkeeper / Fielder):',
                 style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
@@ -413,16 +440,29 @@ class _WicketDialogState extends State<WicketDialog> {
                   child: DropdownButton<String>(
                     isExpanded: true,
                     dropdownColor: AppColors.cardBackground,
-                    value: _selectedStumperId ?? widget.bowlingSquad.first.id,
-                    items: widget.bowlingSquad.map((player) {
-                      final isWK = player.role.toUpperCase() == 'WICKET_KEEPER';
+                    value: _selectedStumperId ?? _effectiveFieldingSquad.first.id,
+                    items: _effectiveFieldingSquad.map((player) {
+                      final isWK = player.role.toUpperCase() == 'WICKET_KEEPER' || player.role.toLowerCase().contains('keeper');
+                      final isReserve = _isPlayerReserve(player);
+
+                      String label;
+                      if (isWK) {
+                        label = '🧤 ${player.name} (Wicketkeeper)';
+                      } else if (isReserve) {
+                        label = '🛡️ ${player.name} (Reserve Fielder)';
+                      } else {
+                        label = '🧤 ${player.name}';
+                      }
+
                       return DropdownMenuItem<String>(
                         value: player.id,
                         child: Text(
-                          '🧤 ${player.name}${isWK ? " (Wicketkeeper)" : ""}',
+                          label,
                           style: GoogleFonts.outfit(
-                            color: isWK ? AppColors.gold : AppColors.textPrimary,
-                            fontWeight: isWK ? FontWeight.bold : FontWeight.normal,
+                            color: isWK
+                                ? AppColors.gold
+                                : (isReserve ? AppColors.accentCyan : AppColors.textPrimary),
+                            fontWeight: (isWK || isReserve) ? FontWeight.bold : FontWeight.normal,
                             fontSize: 13,
                           ),
                         ),
@@ -437,7 +477,7 @@ class _WicketDialogState extends State<WicketDialog> {
 
             // 6. Conditional: RUN OUT (Fielder dropdown & Runs completed)
             if (isRunOut) ...[
-              if (widget.bowlingSquad.isNotEmpty) ...[
+              if (_effectiveFieldingSquad.isNotEmpty) ...[
                 Text(
                   '🏃 Run Out By (Fielder / Thrower):',
                   style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
@@ -454,14 +494,27 @@ class _WicketDialogState extends State<WicketDialog> {
                     child: DropdownButton<String>(
                       isExpanded: true,
                       dropdownColor: AppColors.cardBackground,
-                      value: _selectedRunOutFielderId ?? widget.bowlingSquad.first.id,
-                      items: widget.bowlingSquad.map((player) {
+                      value: _selectedRunOutFielderId ?? _effectiveFieldingSquad.first.id,
+                      items: _effectiveFieldingSquad.map((player) {
+                        final isBowler = player.id == widget.currentBowler.id;
+                        final isReserve = _isPlayerReserve(player);
+
+                        String label;
+                        if (isBowler) {
+                          label = '🎯 ${player.name} (Bowler)';
+                        } else if (isReserve) {
+                          label = '🛡️ ${player.name} (Reserve Fielder)';
+                        } else {
+                          label = '🏃 ${player.name}';
+                        }
+
                         return DropdownMenuItem<String>(
                           value: player.id,
                           child: Text(
-                            '🏃 ${player.name}',
+                            label,
                             style: GoogleFonts.outfit(
-                              color: AppColors.textPrimary,
+                              color: isReserve ? AppColors.accentCyan : AppColors.textPrimary,
+                              fontWeight: isReserve ? FontWeight.bold : FontWeight.normal,
                               fontSize: 13,
                             ),
                           ),

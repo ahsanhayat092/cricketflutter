@@ -208,8 +208,10 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     List<PlayerModel> battingSquad,
     List<PlayerModel> bowlingSquad,
     PlayerModel currentBowler,
-    int currentWickets,
-  ) async {
+    int currentWickets, {
+    List<PlayerModel>? fieldingSquad,
+    Set<String>? playingVIIds,
+  }) async {
     _triggerHaptic();
     final usedPlayerIds = ref
         .read(liveScoringControllerProvider(widget.matchId))
@@ -232,6 +234,8 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
         nonStriker: nonStriker,
         availableNextBatsmen: unbattedPlayers,
         bowlingSquad: bowlingSquad,
+        fieldingSquad: fieldingSquad,
+        playingVIIds: playingVIIds,
         currentBowler: currentBowler,
         isLastPossibleWicket: isLastWicket,
         initialBallContext: isFreeHit ? BallContext.freeHit : BallContext.normal,
@@ -440,6 +444,16 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
         ? match.teamAPlayingVI.map((id) => playerMap[id] ?? PlayerModel(id: id, teamId: '', name: 'Bowler $id')).toList()
         : match.teamBPlayingVI.map((id) => playerMap[id] ?? PlayerModel(id: id, teamId: '', name: 'Bowler $id')).toList();
 
+    // All squad members of the fielding team (Playing VI + Reserves)
+    final allFieldingPlayers = allPlayers
+        .where((p) => p.teamId == innings.bowlingTeamId)
+        .toList();
+    final fieldingSquad = allFieldingPlayers.isNotEmpty ? allFieldingPlayers : bowlingSquad;
+    final bowlingPlayingVIIds = (innings.bowlingTeamId == match.teamAId
+            ? match.teamAPlayingVI
+            : match.teamBPlayingVI)
+        .toSet();
+
     final striker = scoringState.strikerId != null
         ? playerMap[scoringState.strikerId] ?? PlayerModel(id: scoringState.strikerId!, teamId: '', name: 'Striker')
         : (battingSquad.isNotEmpty ? battingSquad[0] : const PlayerModel(id: 's1', teamId: '', name: 'Striker'));
@@ -601,6 +615,8 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
               bowlingSquad,
               scoringState.previousBowlerId,
               match.isFinal,
+              fieldingSquad: fieldingSquad,
+              playingVIIds: bowlingPlayingVIIds,
             ),
           ],
         ),
@@ -1290,8 +1306,10 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     bool isNoBowlerSelected,
     List<PlayerModel> bowlingSquad,
     String? previousBowlerId,
-    bool isFinalMatch,
-  ) {
+    bool isFinalMatch, {
+    List<PlayerModel>? fieldingSquad,
+    Set<String>? playingVIIds,
+  }) {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
@@ -1408,6 +1426,8 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                             bowlingSquad,
                             currentBowler,
                             currentWickets,
+                            fieldingSquad: fieldingSquad,
+                            playingVIIds: playingVIIds,
                           );
                         },
                   child: Row(
