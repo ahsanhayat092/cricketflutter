@@ -8,6 +8,13 @@ abstract class PlayerRepository {
   Future<List<PlayerModel>> getPlayersByTeam(String teamId);
   Future<PlayerModel?> getPlayer(String playerId);
   Future<void> savePlayer(PlayerModel player);
+  Future<String> addPlayerToSquad({
+    required String teamId,
+    required String name,
+    required String role,
+    String designation = 'Team Member',
+    int? jerseyNumber,
+  });
 }
 
 class FirebasePlayerRepository implements PlayerRepository {
@@ -58,5 +65,34 @@ class FirebasePlayerRepository implements PlayerRepository {
     await _firestore
         .doc(FirestorePaths.player(player.id))
         .set(player.toFirestore(), SetOptions(merge: true));
+  }
+
+  @override
+  Future<String> addPlayerToSquad({
+    required String teamId,
+    required String name,
+    required String role,
+    String designation = 'Team Member',
+    int? jerseyNumber,
+  }) async {
+    final now = DateTime.now().toIso8601String();
+    final isCaptain = designation == 'Captain';
+    final isViceCaptain = designation == 'Vice Captain';
+    final docRef = await _firestore.collection(FirestorePaths.players).add({
+      'teamId': teamId,
+      'name': name.trim(),
+      'role': role,
+      'designation': designation,
+      'isCaptain': isCaptain,
+      'isViceCaptain': isViceCaptain,
+      'isPlayingVI': true,
+      'jerseyNumber': jerseyNumber,
+      'battingStyle': null,
+      'bowlingStyle': null,
+      'photoUrl': null,
+      'createdAt': now,
+      'updatedAt': now,
+    });
+    return docRef.id;
   }
 }

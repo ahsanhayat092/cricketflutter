@@ -14,6 +14,7 @@ import '../../scoring/presentation/opening_players_dialog.dart';
 import '../providers/tournament_providers.dart';
 import '../../standings/providers/standings_provider.dart';
 import 'toss_modal.dart';
+import 'widgets/quick_add_player_dialog.dart';
 
 class MatchLineupScreen extends ConsumerStatefulWidget {
   final MatchModel match;
@@ -95,6 +96,28 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
         _tossDecision = result.decision;
       });
     }
+  }
+
+  void _openQuickAddPlayerBottomSheet(TeamModel team) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => QuickAddPlayerBottomSheet(
+        teamId: team.id,
+        teamName: team.name,
+        onPlayerAdded: (newPlayerId) {
+          setState(() {
+            final isTeamA = team.id == widget.match.teamAId;
+            final targetSet = isTeamA ? _teamAPlayingVI : _teamBPlayingVI;
+            // Auto-select into playing VI if slots are available (< 6)
+            if (targetSet.length < AppConstants.playingSquadSize) {
+              targetSet.add(newPlayerId);
+            }
+          });
+        },
+      ),
+    );
   }
 
   Future<void> _saveAndProceedToScoring(List<PlayerModel> teamAPlayers, List<PlayerModel> teamBPlayers) async {
@@ -510,11 +533,26 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                     style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
                   ),
                   const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(backgroundColor: AppColors.surfaceLight),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Refresh'),
-                    onPressed: () => ref.invalidate(teamPlayersStreamProvider(team.id)),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accent,
+                          foregroundColor: Colors.black,
+                        ),
+                        icon: const Icon(Icons.person_add_alt_1_rounded),
+                        label: const Text('ADD PLAYER'),
+                        onPressed: () => _openQuickAddPlayerBottomSheet(team),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        style: ElevatedButton.styleFrom(foregroundColor: AppColors.textPrimary),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Refresh'),
+                        onPressed: () => ref.invalidate(teamPlayersStreamProvider(team.id)),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -525,20 +563,37 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Playing VI Section
+            // Playing VI Section Header with "+ Add Player" Button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'SELECT STARTING 6 (PLAYING VI)',
-                  style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w900, color: AppColors.accent),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'SELECT STARTING 6 (PLAYING VI)',
+                      style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w900, color: AppColors.accent),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${playingVI.length} / 6 Starters Selected',
+                      style: GoogleFonts.outfit(
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                        color: playingVI.length == 6 ? AppColors.accent : AppColors.wicket,
+                      ),
+                    ),
+                  ],
                 ),
-                Text(
-                  '${playingVI.length} / 6 Selected',
-                  style: GoogleFonts.outfit(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: playingVI.length == 6 ? AppColors.accent : AppColors.wicket,
+                OutlinedButton.icon(
+                  onPressed: () => _openQuickAddPlayerBottomSheet(team),
+                  icon: const Icon(Icons.person_add_alt_1_rounded, size: 14),
+                  label: Text('Add Player', style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side: const BorderSide(color: AppColors.accent, width: 1.2),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                   ),
                 ),
               ],
