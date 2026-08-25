@@ -399,6 +399,107 @@ class ScoringSyncService {
       debugPrint('[ScoringSyncService] Error updating Final fixture: $e\n$stack');
     }
   }
+
+  /// Swaps a wrongly attributed player on the batting or bowling scorecard in Firestore
+  Future<void> swapScorecardPlayer({
+    required String matchId,
+    required String inningsId,
+    required int inningsNumber,
+    required String oldPlayerId,
+    required String newPlayerId,
+    required String newPlayerName,
+    required bool isBatting,
+  }) async {
+    await ensureAuthenticated();
+    final batch = _firestore.batch();
+    final now = DateTime.now().toIso8601String();
+
+    if (isBatting) {
+      final oldDocRef = _firestore.doc(FirestorePaths.battingScore('${inningsId}_$oldPlayerId'));
+      final newDocRef = _firestore.doc(FirestorePaths.battingScore('${inningsId}_$newPlayerId'));
+
+      final oldSnapshot = await oldDocRef.get();
+      if (oldSnapshot.exists) {
+        final data = Map<String, dynamic>.from(oldSnapshot.data() ?? {});
+        data['id'] = '${inningsId}_$newPlayerId';
+        data['playerId'] = newPlayerId;
+        data['updatedAt'] = now;
+        batch.set(newDocRef, data, SetOptions(merge: true));
+        batch.delete(oldDocRef);
+      }
+    } else {
+      final oldDocRef = _firestore.doc(FirestorePaths.bowlingScore('${inningsId}_$oldPlayerId'));
+      final newDocRef = _firestore.doc(FirestorePaths.bowlingScore('${inningsId}_$newPlayerId'));
+
+      final oldSnapshot = await oldDocRef.get();
+      if (oldSnapshot.exists) {
+        final data = Map<String, dynamic>.from(oldSnapshot.data() ?? {});
+        data['id'] = '${inningsId}_$newPlayerId';
+        data['playerId'] = newPlayerId;
+        data['updatedAt'] = now;
+        batch.set(newDocRef, data, SetOptions(merge: true));
+        batch.delete(oldDocRef);
+      }
+    }
+
+    // Also update match document if web format uses embedded innings map
+    final matchRef = _firestore.doc(FirestorePaths.match(matchId));
+    final matchSnap = await matchRef.get();
+    if (matchSnap.exists) {
+      final matchData = matchSnap.data();
+      final inningsKey = inningsNumber == 1 ? 'innings1' : 'innings2';
+      if (matchData != null && matchData.containsKey(inningsKey)) {
+        final Map<String, dynamic> innings = Map<String, dynamic>.from(matchData[inningsKey] ?? {});
+        if (isBatting) {
+          final List batting = List.from(innings['batting'] ?? []);
+          for (var i = 0; i < batting.length; i++) {
+            if (batting[i]['playerId'] == oldPlayerId) {
+              batting[i]['playerId'] = newPlayerId;
+              batting[i]['name'] = newPlayerName;
+            }
+          }
+          innings['batting'] = batting;
+          if (innings['strikerId'] == oldPlayerId) innings['strikerId'] = newPlayerId;
+          if (innings['nonStrikerId'] == oldPlayerId) innings['nonStrikerId'] = newPlayerId;
+        } else {
+          final List bowling = List.from(innings['bowling'] ?? []);
+          for (var i = 0; i < bowling.length; i++) {
+            if (bowling[i]['playerId'] == oldPlayerId) {
+              bowling[i]['playerId'] = newPlayerId;
+              bowling[i]['name'] = newPlayerName;
+            }
+          }
+          innings['bowling'] = bowling;
+          if (innings['currentBowlerId'] == oldPlayerId) innings['currentBowlerId'] = newPlayerId;
+        }
+        batch.update(matchRef, {
+          inningsKey: innings,
+          'updatedAt': now,
+        });
+      }
+    }
+
+    await batch.commit();
+  }
+
+  /// Updates match lineups (Playing VI and Reserves) in Firestore
+  Future<void> updateMatchLineup({
+    required String matchId,
+    required List<String> teamAPlayingVI,
+    String? teamAReserveId,
+    required List<String> teamBPlayingVI,
+    String? teamBReserveId,
+  }) async {
+    await ensureAuthenticated();
+    final matchRef = _firestore.doc(FirestorePaths.match(matchId));
+    await matchRef.update({
+      'teamAPlayingVI': teamAPlayingVI,
+      'teamAReserveId': teamAReserveId,
+      'teamBPlayingVI': teamBPlayingVI,
+      'teamBReserveId': teamBReserveId,
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
+  }
 }
 
 class _TeamStandingAccumulator {

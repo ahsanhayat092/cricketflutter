@@ -25,6 +25,7 @@ import 'wicket_dialog.dart';
 import 'bowler_select_dialog.dart';
 import 'no_ball_dialog.dart';
 import 'opening_players_dialog.dart';
+import 'mid_match_correction_dialog.dart';
 
 class ScorerConsoleScreen extends ConsumerStatefulWidget {
   final String matchId;
@@ -427,6 +428,11 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     final allTeams = ref.watch(teamsProvider).value ?? [];
     final teamMap = {for (var t in allTeams) t.id: t};
 
+    final teamA = teamMap[match.teamAId] ??
+        TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
+    final teamB = teamMap[match.teamBId] ??
+        TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+
     final battingTeam = teamMap[innings.battingTeamId] ??
         TeamModel(id: innings.battingTeamId, name: 'Batting Team', shortName: 'BAT');
     final bowlingTeam = teamMap[innings.bowlingTeamId] ??
@@ -530,6 +536,24 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           ],
         ),
         actions: [
+          // Replace / Correct Player (Lineup & Scorecard Correction)
+          IconButton(
+            icon: const Icon(Icons.manage_accounts_rounded, color: AppColors.accent),
+            tooltip: 'Replace / Correct Player',
+            onPressed: () {
+              _triggerHaptic();
+              showDialog(
+                context: context,
+                builder: (ctx) => MidMatchCorrectionDialog(
+                  matchId: widget.matchId,
+                  match: match,
+                  teamA: teamA,
+                  teamB: teamB,
+                  allPlayers: allPlayers,
+                ),
+              );
+            },
+          ),
           // Swap Striker button
           IconButton(
             icon: const Icon(Icons.swap_horiz, color: AppColors.accentCyan),

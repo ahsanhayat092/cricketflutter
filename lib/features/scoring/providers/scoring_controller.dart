@@ -547,4 +547,105 @@ class ScoringController extends StateNotifier<ScoringState> {
       state = state.copyWith(isSyncing: false, lastSyncError: e.toString());
     }
   }
+
+  /// Mid-Match Scorecard Correction: Swaps a wrongly attributed player on batting or bowling scorecard
+  Future<void> swapPlayer({
+    required String oldPlayerId,
+    required String newPlayerId,
+    required String newPlayerName,
+    required bool isBatting,
+  }) async {
+    if (oldPlayerId == newPlayerId) return;
+
+    var updatedBattingScores = Map<String, BattingScore>.from(state.battingScores);
+    var updatedBowlingScores = Map<String, BowlingScore>.from(state.bowlingScores);
+    var updatedPlayerNames = Map<String, String>.from(state.playerNames);
+
+    updatedPlayerNames[newPlayerId] = newPlayerName;
+
+    String? newStrikerId = state.strikerId;
+    String? newNonStrikerId = state.nonStrikerId;
+    String? newCurrentBowlerId = state.currentBowlerId;
+    String? newPreviousBowlerId = state.previousBowlerId;
+
+    if (isBatting) {
+      if (updatedBattingScores.containsKey(oldPlayerId)) {
+        final oldStat = updatedBattingScores.remove(oldPlayerId)!;
+        updatedBattingScores[newPlayerId] = oldStat.copyWith(
+          id: '${state.innings.id}_$newPlayerId',
+          playerId: newPlayerId,
+        );
+      }
+      if (newStrikerId == oldPlayerId) newStrikerId = newPlayerId;
+      if (newNonStrikerId == oldPlayerId) newNonStrikerId = newPlayerId;
+    } else {
+      if (updatedBowlingScores.containsKey(oldPlayerId)) {
+        final oldStat = updatedBowlingScores.remove(oldPlayerId)!;
+        updatedBowlingScores[newPlayerId] = oldStat.copyWith(
+          id: '${state.innings.id}_$newPlayerId',
+          playerId: newPlayerId,
+        );
+      }
+      if (newCurrentBowlerId == oldPlayerId) newCurrentBowlerId = newPlayerId;
+      if (newPreviousBowlerId == oldPlayerId) newPreviousBowlerId = newPlayerId;
+    }
+
+    state = state.copyWith(
+      battingScores: updatedBattingScores,
+      bowlingScores: updatedBowlingScores,
+      playerNames: updatedPlayerNames,
+      strikerId: newStrikerId,
+      nonStrikerId: newNonStrikerId,
+      currentBowlerId: newCurrentBowlerId,
+      previousBowlerId: newPreviousBowlerId,
+      isSyncing: true,
+    );
+
+    try {
+      await _syncService.swapScorecardPlayer(
+        matchId: matchId,
+        inningsId: state.innings.id,
+        inningsNumber: state.innings.inningsNumber,
+        oldPlayerId: oldPlayerId,
+        newPlayerId: newPlayerId,
+        newPlayerName: newPlayerName,
+        isBatting: isBatting,
+      );
+      state = state.copyWith(isSyncing: false, lastSyncError: null);
+    } catch (e) {
+      debugPrint('[ScoringController] Error swapping player in Firestore: $e');
+      state = state.copyWith(isSyncing: false, lastSyncError: e.toString());
+    }
+  }
+
+  /// Mid-Match Lineup Update: Updates Playing VI and Reserves for both teams
+  Future<void> updateLineup({
+    required List<String> teamAPlayingVI,
+    String? teamAReserveId,
+    required List<String> teamBPlayingVI,
+    String? teamBReserveId,
+  }) async {
+    final updatedMatch = state.match.copyWith(
+      teamAPlayingVI: teamAPlayingVI,
+      teamAReserveId: teamAReserveId,
+      teamBPlayingVI: teamBPlayingVI,
+      teamBReserveId: teamBReserveId,
+    );
+
+    state = state.copyWith(match: updatedMatch, isSyncing: true);
+
+    try {
+      await _syncService.updateMatchLineup(
+        matchId: matchId,
+        teamAPlayingVI: teamAPlayingVI,
+        teamAReserveId: teamAReserveId,
+        teamBPlayingVI: teamBPlayingVI,
+        teamBReserveId: teamBReserveId,
+      );
+      state = state.copyWith(isSyncing: false, lastSyncError: null);
+    } catch (e) {
+      debugPrint('[ScoringController] Error updating lineup in Firestore: $e');
+      state = state.copyWith(isSyncing: false, lastSyncError: e.toString());
+    }
+  }
 }

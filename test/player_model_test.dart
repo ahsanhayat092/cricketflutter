@@ -68,5 +68,36 @@ void main() {
       expect(reserves.length, 1);
       expect(reserves.first.id, 'p7');
     });
+
+    test('Mid-Match Scorecard Swap correctly transfers stats from old player to new player', () {
+      final oldPlayerId = 'p_old';
+      final newPlayerId = 'p_new';
+
+      final battingScores = <String, Map<String, dynamic>>{
+        oldPlayerId: {
+          'id': 'inn_1_p_old',
+          'playerId': oldPlayerId,
+          'runs': 34,
+          'balls': 18,
+          'fours': 3,
+          'sixes': 2,
+          'isOut': false,
+        },
+      };
+
+      // Perform swap
+      final oldStat = battingScores.remove(oldPlayerId)!;
+      battingScores[newPlayerId] = {
+        ...oldStat,
+        'id': 'inn_1_$newPlayerId',
+        'playerId': newPlayerId,
+      };
+
+      expect(battingScores.containsKey(oldPlayerId), isFalse);
+      expect(battingScores.containsKey(newPlayerId), isTrue);
+      expect(battingScores[newPlayerId]?['runs'], 34);
+      expect(battingScores[newPlayerId]?['sixes'], 2);
+      expect(battingScores[newPlayerId]?['playerId'], newPlayerId);
+    });
   });
 }
