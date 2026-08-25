@@ -5,17 +5,9 @@ import '../models/batting_score.dart';
 import '../models/bowling_score.dart';
 import '../models/ball_event.dart';
 
-enum MatchStage {
-  league,
-  finalStage,
-}
-
-MatchStage matchStageFromString(String? stage) {
-  if (stage?.toUpperCase() == 'FINAL') return MatchStage.finalStage;
-  return MatchStage.league;
-}
-
-bool isFinalMatch(MatchStage stage) => stage == MatchStage.finalStage;
+MatchStage matchStageFromString(String? stage) => MatchStageX.fromFirestoreString(stage);
+bool isFinalMatch(MatchStage stage) => stage == MatchStage.finalMatch;
+bool isPlayoffMatch(MatchStage stage) => stage == MatchStage.playoff;
 
 class ScoringResult {
   final MatchModel match;
@@ -131,7 +123,7 @@ class CricketScoringEngine {
     return isBowlerEligibleForNextOver(
       bowlerId: bowlerId,
       lastOverBowlerId: previousBowlerId,
-      stage: isFinalMatch ? MatchStage.finalStage : MatchStage.league,
+      stage: isFinalMatch ? MatchStage.finalMatch : MatchStage.league,
       bowlingScores: bowlingScores.values.toList(),
     );
   }
@@ -146,7 +138,7 @@ class CricketScoringEngine {
     if (previousBowlerId != null && bowlerId == previousBowlerId) {
       return 'Bowled Previous Over (Consecutive Lock)';
     }
-    final stage = isFinalMatch ? MatchStage.finalStage : MatchStage.league;
+    final stage = isFinalMatch ? MatchStage.finalMatch : MatchStage.league;
     if (isBowlerQuotaExhausted(
       bowlerId: bowlerId,
       stage: stage,
@@ -216,7 +208,7 @@ class CricketScoringEngine {
     String? celebrationText;
 
     final bowlerBallsSoFar = bowlingScores[bowlerId]?.balls ?? 0;
-    final stageEnum = match.isFinal ? MatchStage.finalStage : MatchStage.league;
+    final stageEnum = match.isFinal ? MatchStage.finalMatch : MatchStage.league;
     final maxBallsAllowed = getBowlerMaxBalls(
       bowlerId: bowlerId,
       stage: stageEnum,

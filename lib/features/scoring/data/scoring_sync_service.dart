@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../../core/constants/firestore_paths.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../models/match_model.dart';
 import '../models/innings_model.dart';
 import '../models/batting_score.dart';
@@ -217,7 +218,7 @@ class ScoringSyncService {
       // Only count league matches for round-robin standings
       final completedMatches = matchesSnap.docs
           .map((doc) => MatchModel.fromFirestore(doc))
-          .where((m) => !m.isFinal)
+          .where((m) => !m.isFinal && !m.isPlayoff)
           .toList();
 
       // 3. Fetch all innings for completed matches
@@ -239,69 +240,103 @@ class ScoringSyncService {
         final teamBId = match.teamBId;
         final matchInnList = inningsByMatch[match.id] ?? [];
 
-        final inn1 = matchInnList.isNotEmpty
-            ? matchInnList.firstWhere((i) => i.inningsNumber == 1, orElse: () => matchInnList.first)
-            : null;
+        if (matchInnList.isEmpty) continue;
+
+        final statA = stats[teamAId];
+        final statB = stats[teamBId];
+
+        if (statA == null || statB == null) continue;
+
+        statA.played += 1;
+        statB.played += 1;
+
+        final inn1 = matchInnList.firstWhere(
+          (i) => i.inningsNumber == 1,
+          orElse: () => matchInnList[0],
+        );
         final inn2 = matchInnList.length > 1
-            ? matchInnList.firstWhere((i) => i.inningsNumber == 2, orElse: () => matchInnList.last)
+            ? matchInnList.firstWhere((i) => i.inningsNumber == 2, orElse: () => matchInnList[1])
             : null;
 
-        final accA = stats[teamAId];
-        final accB = stats[teamBId];
+        // Innings 1 stats
+        final inn1BattingTeam = inn1.battingTeamId;
+        final inn1Runs = inn1.runs;
+        final inn1Balls = inn1.balls;
 
-        if (accA != null) accA.played++;
-        if (accB != null) accB.played++;
+        if (inn1BattingTeam == teamAId) {
+          statA.runsFor += inn1Runs;
+          statA.ballsFor += (inn1.wickets >= AppConstants.maxWicketsPerInnings)
+              ? (match.maxBalls)
+              : inn1Balls;
 
-        final isTie = match.resultText?.toLowerCase().contains('tie') == true;
-        final isNoResult = match.resultText?.toLowerCase().contains('no result') == true;
+          statB.runsAgainst += inn1Runs;
+          statB.ballsAgainst += (inn1.wickets >= AppConstants.maxWicketsPerInnings)
+              ? (match.maxBalls)
+              : inn1Balls;
+        } else {
+          statB.runsFor += inn1Runs;
+          statB.ballsFor += (inn1.wickets >= AppConstants.maxWicketsPerInnings)
+              ? (match.maxBalls)
+              : inn1Balls;
 
-        if (isTie) {
-          if (accA != null) { accA.tied++; accA.form.add('T'); }
-          if (accB != null) { accB.tied++; accB.form.add('T'); }
-        } else if (isNoResult) {
-          if (accA != null) { accA.noResult++; accA.form.add('NR'); }
-          if (accB != null) { accB.noResult++; accB.form.add('NR'); }
-        } else if (match.winningTeamId != null && match.winningTeamId!.isNotEmpty) {
-          if (match.winningTeamId == teamAId) {
-            if (accA != null) { accA.won++; accA.form.add('W'); }
-            if (accB != null) { accB.lost++; accB.form.add('L'); }
-          } else if (match.winningTeamId == teamBId) {
-            if (accB != null) { accB.won++; accB.form.add('W'); }
-            if (accA != null) { accA.lost++; accA.form.add('L'); }
+          statA.runsAgainst += inn1Runs;
+          statA.ballsAgainst += (inn1.wickets >= AppConstants.maxWicketsPerInnings)
+              ? (match.maxBalls)
+              : inn1Balls;
+        }
+
+        // Innings 2 stats
+        if (inn2 != null) {
+          final inn2BattingTeam = inn2.battingTeamId;
+          final inn2Runs = inn2.runs;
+          final inn2Balls = inn2.balls;
+
+          if (inn2BattingTeam == teamAId) {
+            statA.runsFor += inn2Runs;
+            statA.ballsFor += (inn2.wickets >= AppConstants.maxWicketsPerInnings)
+                ? (match.maxBalls)
+                : inn2Balls;
+
+            statB.runsAgainst += inn2Runs;
+            statB.ballsAgainst += (inn2.wickets >= AppConstants.maxWicketsPerInnings)
+                ? (match.maxBalls)
+                : inn2Balls;
+          } else {
+            statB.runsFor += inn2Runs;
+            statB.ballsFor += (inn2.wickets >= AppConstants.maxWicketsPerInnings)
+                ? (match.maxBalls)
+                : inn2Balls;
+
+            statA.runsAgainst += inn2Runs;
+            statA.ballsAgainst += (inn2.wickets >= AppConstants.maxWicketsPerInnings)
+                ? (match.maxBalls)
+                : inn2Balls;
           }
         }
 
-        // Add NRR runs and overs/balls
-        if (inn1 != null && inn2 != null) {
-          final maxBalls = match.maxBalls;
-
-          // Innings 1:
-          final inn1Team = inn1.battingTeamId;
-          final inn1BowlTeam = inn1.bowlingTeamId;
-          final int inn1BallsFaced = inn1.allOut ? match.maxBalls : inn1.balls;
-
-          // Innings 2:
-          final inn2Team = inn2.battingTeamId;
-          final inn2BowlTeam = inn2.bowlingTeamId;
-          final int inn2BallsFaced = inn2.allOut ? match.maxBalls : inn2.balls;
-
-          if (stats.containsKey(inn1Team)) {
-            stats[inn1Team]!.runsFor += inn1.runs;
-            stats[inn1Team]!.ballsFor += inn1BallsFaced;
+        // Match Outcome
+        if (match.winningTeamId != null && match.winningTeamId!.isNotEmpty) {
+          if (match.winningTeamId == teamAId) {
+            statA.won += 1;
+            statA.form.add('W');
+            statB.lost += 1;
+            statB.form.add('L');
+          } else if (match.winningTeamId == teamBId) {
+            statB.won += 1;
+            statB.form.add('W');
+            statA.lost += 1;
+            statA.form.add('L');
           }
-          if (stats.containsKey(inn1BowlTeam)) {
-            stats[inn1BowlTeam]!.runsAgainst += inn1.runs;
-            stats[inn1BowlTeam]!.ballsAgainst += inn1BallsFaced;
-          }
-
-          if (stats.containsKey(inn2Team)) {
-            stats[inn2Team]!.runsFor += inn2.runs;
-            stats[inn2Team]!.ballsFor += inn2BallsFaced;
-          }
-          if (stats.containsKey(inn2BowlTeam)) {
-            stats[inn2BowlTeam]!.runsAgainst += inn2.runs;
-            stats[inn2BowlTeam]!.ballsAgainst += inn2BallsFaced;
-          }
+        } else if (match.status == 'TIED') {
+          statA.tied += 1;
+          statA.form.add('T');
+          statB.tied += 1;
+          statB.form.add('T');
+        } else if (match.status == 'NO_RESULT' || match.status == 'ABANDONED') {
+          statA.noResult += 1;
+          statA.form.add('NR');
+          statB.noResult += 1;
+          statB.form.add('NR');
         }
       }
 
@@ -321,7 +356,8 @@ class ScoringSyncService {
 
       for (int i = 0; i < standingList.length; i++) {
         final position = i + 1;
-        final isQualified = position <= 2; // Top 2 qualify for Final
+        // Rank 1: Direct Final qualifier; Rank 2 & 3: Playoff qualifiers
+        final isQualified = position <= 3;
         final standing = standingList[i].copyWith(
           position: position,
           qualified: isQualified,
@@ -335,15 +371,15 @@ class ScoringSyncService {
       await batch.commit();
       debugPrint('[ScoringSyncService] Successfully recalculated and updated tournament standings in Firestore.');
 
-      // Auto-update Grand Final fixture with top 2 qualified teams
-      await maybeUpdateFinalFixture(tournamentId);
+      // Auto-update Playoff and Grand Final fixtures
+      await maybeUpdatePlayoffAndFinalFixtures(tournamentId);
     } catch (e, stack) {
       debugPrint('[ScoringSyncService] Error recalculating standings: $e\n$stack');
     }
   }
 
-  /// Auto-Update Grand Final Fixture in Firestore with Top 2 Ranked Teams from Standings
-  Future<void> maybeUpdateFinalFixture(String tournamentId) async {
+  /// Auto-Update Playoff and Grand Final Fixtures in Firestore with Qualified Teams from Standings
+  Future<void> maybeUpdatePlayoffAndFinalFixtures(String tournamentId) async {
     try {
       final standingsSnap = await _firestore
           .collection(FirestorePaths.standings)
@@ -364,9 +400,10 @@ class ScoringSyncService {
         return b.nrr.compareTo(a.nrr);
       });
 
-      if (standings.length < 2) return;
+      if (standings.isEmpty) return;
       final rank1TeamId = standings[0].teamId;
-      final rank2TeamId = standings[1].teamId;
+      final rank2TeamId = standings.length > 1 ? standings[1].teamId : null;
+      final rank3TeamId = standings.length > 2 ? standings[2].teamId : null;
 
       final matchesSnap = await _firestore
           .collection(FirestorePaths.matches)
@@ -377,26 +414,66 @@ class ScoringSyncService {
           .map((d) => MatchModel.fromMap(d.id, d.data()))
           .toList();
 
+      // 1. Update Playoff Fixture: Rank 2 vs Rank 3
+      if (rank2TeamId != null && rank3TeamId != null) {
+        final playoffMatches = matches.where((m) =>
+            m.stage.toUpperCase() == 'PLAYOFF' ||
+            MatchStageX.fromFirestoreString(m.stage) == MatchStage.playoff).toList();
+
+        if (playoffMatches.isNotEmpty) {
+          final playoff = playoffMatches.first;
+          if (!playoff.isCompleted && !playoff.isLive) {
+            if (playoff.teamAId != rank2TeamId || playoff.teamBId != rank3TeamId) {
+              await _firestore.collection(FirestorePaths.matches).doc(playoff.id).update({
+                'teamAId': rank2TeamId,
+                'teamBId': rank3TeamId,
+                'stage': 'PLAYOFF',
+                'updatedAt': DateTime.now().toIso8601String(),
+              });
+              debugPrint('[ScoringSyncService] Updated Playoff (${playoff.id}) with Rank 2 ($rank2TeamId) vs Rank 3 ($rank3TeamId)');
+            }
+          }
+        }
+      }
+
+      // 2. Update Grand Final Fixture: Rank 1 vs Playoff Winner (or Rank 2)
       final finalMatches = matches.where((m) =>
-          m.stage.toUpperCase() == 'FINAL' || m.matchNumber >= 10).toList();
+          m.stage.toUpperCase() == 'FINAL' ||
+          MatchStageX.fromFirestoreString(m.stage) == MatchStage.finalMatch).toList();
 
-      if (finalMatches.isEmpty) return;
-      final finalMatch = finalMatches.first;
+      if (finalMatches.isNotEmpty) {
+        final finalMatch = finalMatches.first;
+        if (!finalMatch.isCompleted && !finalMatch.isLive) {
+          final playoffMatches = matches.where((m) =>
+              m.id != finalMatch.id &&
+              (m.stage.toUpperCase() == 'PLAYOFF' || MatchStageX.fromFirestoreString(m.stage) == MatchStage.playoff)).toList();
 
-      // Do not overwrite completed or live final match
-      if (finalMatch.isCompleted || finalMatch.isLive) return;
+          String? targetFinalOpponent = finalMatch.teamBId;
+          if (playoffMatches.isNotEmpty) {
+            final playoff = playoffMatches.first;
+            if (playoff.isCompleted && playoff.winningTeamId != null && playoff.winningTeamId!.isNotEmpty) {
+              targetFinalOpponent = playoff.winningTeamId;
+            }
+          } else if (rank2TeamId != null) {
+            targetFinalOpponent = rank2TeamId;
+          }
 
-      if (finalMatch.teamAId != rank1TeamId || finalMatch.teamBId != rank2TeamId) {
-        await _firestore.collection(FirestorePaths.matches).doc(finalMatch.id).update({
-          'teamAId': rank1TeamId,
-          'teamBId': rank2TeamId,
-          'stage': 'FINAL',
-          'updatedAt': DateTime.now().toIso8601String(),
-        });
-        debugPrint('[ScoringSyncService] Updated Grand Final (${finalMatch.id}) fixture in Firestore with Rank 1 ($rank1TeamId) vs Rank 2 ($rank2TeamId)');
+          if (finalMatch.teamAId != rank1TeamId || (targetFinalOpponent != null && finalMatch.teamBId != targetFinalOpponent)) {
+            final Map<String, dynamic> updateData = {
+              'teamAId': rank1TeamId,
+              'stage': 'FINAL',
+              'updatedAt': DateTime.now().toIso8601String(),
+            };
+            if (targetFinalOpponent != null && targetFinalOpponent.isNotEmpty) {
+              updateData['teamBId'] = targetFinalOpponent;
+            }
+            await _firestore.collection(FirestorePaths.matches).doc(finalMatch.id).update(updateData);
+            debugPrint('[ScoringSyncService] Updated Grand Final (${finalMatch.id}) with Rank 1 ($rank1TeamId) vs $targetFinalOpponent');
+          }
+        }
       }
     } catch (e, stack) {
-      debugPrint('[ScoringSyncService] Error updating Final fixture: $e\n$stack');
+      debugPrint('[ScoringSyncService] Error updating Playoff & Final fixtures: $e\n$stack');
     }
   }
 

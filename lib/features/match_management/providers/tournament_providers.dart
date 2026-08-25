@@ -24,33 +24,96 @@ final scoringSyncServiceProvider = Provider<ScoringSyncService>((ref) {
   return ScoringSyncService();
 });
 
-/// Helper to dynamically hydrate Final match teams from Standings (Rank 1 & Rank 2)
-MatchModel hydrateMatchWithStandings(MatchModel match, List<StandingWithTeam> standings) {
-  final isFinal = match.stage.toUpperCase() == 'FINAL' || match.matchNumber >= 10;
-  if (!isFinal || standings.length < 2) return match;
+/// Helper to dynamically hydrate Playoff (Rank 2 vs Rank 3) and Final (Rank 1 vs Winner of Playoff / Rank 2)
+MatchModel hydrateMatchWithStandings(
+  MatchModel match,
+  List<StandingWithTeam> standings, {
+  List<MatchModel>? allMatches,
+}) {
+  final stageEnum = MatchStageX.fromFirestoreString(match.stage);
 
-  final rank1TeamId = standings[0].standing.teamId;
-  final rank2TeamId = standings[1].standing.teamId;
+  // 1. PLAYOFF MATCH: Rank 2 vs Rank 3
+  if (stageEnum == MatchStage.playoff) {
+    if (standings.length < 3) return match;
 
-  final isTeamAUnset = match.teamAId.isEmpty ||
-      match.teamAId.toLowerCase() == 'rank_1' ||
-      match.teamAId.toLowerCase() == 'rank1' ||
-      match.teamAId.toLowerCase() == 'tbd' ||
-      match.teamAId.toLowerCase() == 'team a';
+    final rank2TeamId = standings[1].standing.teamId;
+    final rank3TeamId = standings[2].standing.teamId;
 
-  final isTeamBUnset = match.teamBId.isEmpty ||
-      match.teamBId.toLowerCase() == 'rank_2' ||
-      match.teamBId.toLowerCase() == 'rank2' ||
-      match.teamBId.toLowerCase() == 'tbd' ||
-      match.teamBId.toLowerCase() == 'team b';
+    final isTeamAUnset = match.teamAId.isEmpty ||
+        match.teamAId.toLowerCase().contains('rank_2') ||
+        match.teamAId.toLowerCase().contains('rank2') ||
+        match.teamAId.toLowerCase() == 'tbd' ||
+        match.teamAId.toLowerCase() == 'team a';
 
-  if (isTeamAUnset || isTeamBUnset) {
-    return match.copyWith(
-      teamAId: isTeamAUnset ? rank1TeamId : match.teamAId,
-      teamBId: isTeamBUnset ? rank2TeamId : match.teamBId,
-      stage: 'FINAL',
-    );
+    final isTeamBUnset = match.teamBId.isEmpty ||
+        match.teamBId.toLowerCase().contains('rank_3') ||
+        match.teamBId.toLowerCase().contains('rank3') ||
+        match.teamBId.toLowerCase() == 'tbd' ||
+        match.teamBId.toLowerCase() == 'team b';
+
+    if (isTeamAUnset || isTeamBUnset) {
+      return match.copyWith(
+        teamAId: isTeamAUnset ? rank2TeamId : match.teamAId,
+        teamBId: isTeamBUnset ? rank3TeamId : match.teamBId,
+        stage: 'PLAYOFF',
+      );
+    }
+    return match;
   }
+
+  // 2. GRAND FINAL MATCH: Rank 1 vs Winner of Playoff (or Rank 2 if direct final)
+  if (stageEnum == MatchStage.finalMatch) {
+    if (standings.isEmpty) return match;
+
+    final rank1TeamId = standings[0].standing.teamId;
+
+    // Check if a playoff match exists and is completed
+    String? playoffWinnerId;
+    if (allMatches != null) {
+      final playoffMatches = allMatches.where((m) =>
+          m.id != match.id &&
+          (MatchStageX.fromFirestoreString(m.stage) == MatchStage.playoff || m.matchNumber == 10));
+      if (playoffMatches.isNotEmpty) {
+        final playoff = playoffMatches.first;
+        if (playoff.isCompleted && playoff.winningTeamId != null && playoff.winningTeamId!.isNotEmpty) {
+          playoffWinnerId = playoff.winningTeamId;
+        }
+      }
+    }
+
+    final isTeamAUnset = match.teamAId.isEmpty ||
+        match.teamAId.toLowerCase().contains('rank_1') ||
+        match.teamAId.toLowerCase().contains('rank1') ||
+        match.teamAId.toLowerCase() == 'tbd' ||
+        match.teamAId.toLowerCase() == 'team a';
+
+    final isTeamBUnset = match.teamBId.isEmpty ||
+        match.teamBId.toLowerCase().contains('rank_2') ||
+        match.teamBId.toLowerCase().contains('rank2') ||
+        match.teamBId.toLowerCase().contains('playoff') ||
+        match.teamBId.toLowerCase() == 'tbd' ||
+        match.teamBId.toLowerCase() == 'team b';
+
+    String? targetTeamB = match.teamBId;
+    if (isTeamBUnset) {
+      if (playoffWinnerId != null) {
+        targetTeamB = playoffWinnerId;
+      } else if (standings.length >= 2 &&
+          (allMatches == null || !allMatches.any((m) => MatchStageX.fromFirestoreString(m.stage) == MatchStage.playoff))) {
+        targetTeamB = standings[1].standing.teamId;
+      }
+    }
+
+    if (isTeamAUnset || (isTeamBUnset && targetTeamB != match.teamBId)) {
+      return match.copyWith(
+        teamAId: isTeamAUnset ? rank1TeamId : match.teamAId,
+        teamBId: targetTeamB,
+        stage: 'FINAL',
+      );
+    }
+    return match;
+  }
+
   return match;
 }
 
@@ -78,24 +141,25 @@ final teamPlayersStreamProvider = StreamProvider.family<List<PlayerModel>, Strin
   return repo.getPlayersByTeamStream(teamId);
 });
 
-/// Realtime Matches Stream from Firestore (/matches) with Finalist Hydration
+/// Realtime Matches Stream from Firestore (/matches) with Playoff and Finalist Hydration
 final matchesProvider = StreamProvider<List<MatchModel>>((ref) {
   final service = ref.watch(scoringServiceProvider);
   final standingsAsync = ref.watch(standingsStreamProvider);
   final standings = standingsAsync.value ?? [];
 
   return service.getMatchesStream().map((matches) {
-    return matches.map((m) => hydrateMatchWithStandings(m, standings)).toList();
+    return matches.map((m) => hydrateMatchWithStandings(m, standings, allMatches: matches)).toList();
   });
 });
 
-/// Realtime Single Match Stream from Firestore (/matches/{matchId}) with Finalist Hydration
+/// Realtime Single Match Stream from Firestore (/matches/{matchId}) with Playoff and Finalist Hydration
 final singleMatchProvider = StreamProvider.family<MatchModel?, String>((ref, matchId) {
   final service = ref.watch(scoringServiceProvider);
   final standingsAsync = ref.watch(standingsStreamProvider);
   final standings = standingsAsync.value ?? [];
 
   return service.getMatchStream(matchId).map((match) {
+    if (match == null) return null;
     return hydrateMatchWithStandings(match, standings);
   });
 });

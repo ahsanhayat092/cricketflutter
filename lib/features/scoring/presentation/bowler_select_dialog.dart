@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../core/constants/app_colors.dart';
 import '../models/player_model.dart';
 import '../models/bowling_score.dart';
+import '../models/match_model.dart';
 import '../engine/cricket_scoring_engine.dart';
 
 class BowlerSelectDialog extends StatefulWidget {
@@ -125,7 +126,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                     final runs = score?.runs ?? 0;
                     final wickets = score?.wickets ?? 0;
 
-                    final stage = widget.isFinalMatch ? MatchStage.finalStage : MatchStage.league;
+                    final stage = widget.isFinalMatch ? MatchStage.finalMatch : MatchStage.league;
                     final maxBalls = CricketScoringEngine.getBowlerMaxBalls(
                       bowlerId: bowler.id,
                       stage: stage,

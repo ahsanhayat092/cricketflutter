@@ -54,20 +54,57 @@ class RecentEventModel {
   }
 }
 
+enum MatchStage {
+  league,
+  playoff,
+  finalMatch,
+}
+
+extension MatchStageX on MatchStage {
+  String toFirestoreString() {
+    switch (this) {
+      case MatchStage.league:
+        return 'LEAGUE';
+      case MatchStage.playoff:
+        return 'PLAYOFF';
+      case MatchStage.finalMatch:
+        return 'FINAL';
+    }
+  }
+
+  static MatchStage fromFirestoreString(String? val) {
+    final v = val?.toUpperCase();
+    if (v == 'FINAL') return MatchStage.finalMatch;
+    if (v == 'PLAYOFF') return MatchStage.playoff;
+    return MatchStage.league;
+  }
+
+  String get displayName {
+    switch (this) {
+      case MatchStage.finalMatch:
+        return '🏆 Grand Final';
+      case MatchStage.playoff:
+        return '⚔️ Playoff (Rank 2 vs 3)';
+      case MatchStage.league:
+        return 'League Match';
+    }
+  }
+}
+
 typedef RecentEvent = RecentEventModel;
 
 class MatchModel {
   final String id;
   final String tournamentId;
   final int matchNumber;
-  final String stage; // "LEAGUE" | "FINAL"
+  final String stage; // "LEAGUE" | "PLAYOFF" | "FINAL"
   final String day; // "FRIDAY" | "SATURDAY" | "SUNDAY" etc.
   final String teamAId;
   final String teamBId;
   final String date;
   final String time;
   final String venue;
-  final int oversPerSide; // 4 overs for LEAGUE, 5 overs for FINAL
+  final int oversPerSide; // 4 overs for LEAGUE/PLAYOFF, 5 overs for FINAL
   final String status; // "UPCOMING" | "LIVE" | "COMPLETED" | "ABANDONED" | "NO_RESULT"
   final String? tossWinnerId;
   final String? tossDecision; // "BAT" | "BOWL"
@@ -94,7 +131,7 @@ class MatchModel {
     required this.date,
     this.time = '14:00',
     this.venue = 'WASA Sports Complex',
-    this.oversPerSide = 4, // Default 4 overs for League, 5 overs for Final
+    this.oversPerSide = 4, // Default 4 overs for League/Playoff, 5 overs for Final
     this.status = 'UPCOMING',
     this.tossWinnerId,
     this.tossDecision,
@@ -115,9 +152,12 @@ class MatchModel {
   bool get isLive => status.toUpperCase() == 'LIVE';
   bool get isUpcoming => status.toUpperCase() == 'UPCOMING';
   bool get isCompleted => status.toUpperCase() == 'COMPLETED';
-  bool get isFinal => stage.toUpperCase() == 'FINAL' || matchNumber == 10;
+  MatchStage get matchStage => MatchStageX.fromFirestoreString(stage);
+  bool get isPlayoff => matchStage == MatchStage.playoff;
+  bool get isFinal => matchStage == MatchStage.finalMatch;
+  String get stageDisplayName => matchStage.displayName;
   
-  /// League matches are 4 overs (24 legal balls). Final match is 5 overs (30 legal balls).
+  /// League and Playoff matches are 4 overs (24 legal balls). Final match is 5 overs (30 legal balls).
   int get maxOvers => isFinal ? 5 : (oversPerSide > 0 ? oversPerSide : 4);
   int get maxBalls => maxOvers * 6;
 

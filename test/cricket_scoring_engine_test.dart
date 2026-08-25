@@ -377,7 +377,7 @@ void main() {
       expect(
         CricketScoringEngine.getBowlerMaxBalls(
           bowlerId: 'b1',
-          stage: MatchStage.finalStage,
+          stage: MatchStage.finalMatch,
           bowlingScores: scores,
         ),
         12,
@@ -387,7 +387,7 @@ void main() {
       final canB1Bowl = CricketScoringEngine.isBowlerEligibleForNextOver(
         bowlerId: 'b1',
         lastOverBowlerId: 'b2',
-        stage: MatchStage.finalStage,
+        stage: MatchStage.finalMatch,
         bowlingScores: scores,
       );
       expect(canB1Bowl, isTrue);
@@ -402,7 +402,7 @@ void main() {
       expect(
         CricketScoringEngine.isBowlerQuotaExhausted(
           bowlerId: 'b1',
-          stage: MatchStage.finalStage,
+          stage: MatchStage.finalMatch,
           bowlingScores: scoresAfterB1TwoOvers,
         ),
         isTrue,
@@ -412,7 +412,7 @@ void main() {
       expect(
         CricketScoringEngine.getBowlerMaxBalls(
           bowlerId: 'b2',
-          stage: MatchStage.finalStage,
+          stage: MatchStage.finalMatch,
           bowlingScores: scoresAfterB1TwoOvers,
         ),
         6,
@@ -423,7 +423,7 @@ void main() {
         CricketScoringEngine.isBowlerEligibleForNextOver(
           bowlerId: 'b2',
           lastOverBowlerId: 'b3',
-          stage: MatchStage.finalStage,
+          stage: MatchStage.finalMatch,
           bowlingScores: scoresAfterB1TwoOvers,
         ),
         isFalse,

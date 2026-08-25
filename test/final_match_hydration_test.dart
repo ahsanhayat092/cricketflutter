@@ -5,7 +5,38 @@ import 'package:wpl_cricket_app/features/standings/models/standing.dart';
 import 'package:wpl_cricket_app/features/match_management/providers/tournament_providers.dart';
 
 void main() {
-  group('Grand Final Match Hydration Tests', () {
+  group('MatchStage Enum & Serialization Tests', () {
+    test('MatchStage converts to/from Firestore string correctly', () {
+      expect(MatchStage.league.toFirestoreString(), 'LEAGUE');
+      expect(MatchStage.playoff.toFirestoreString(), 'PLAYOFF');
+      expect(MatchStage.finalMatch.toFirestoreString(), 'FINAL');
+
+      expect(MatchStageX.fromFirestoreString('LEAGUE'), MatchStage.league);
+      expect(MatchStageX.fromFirestoreString('PLAYOFF'), MatchStage.playoff);
+      expect(MatchStageX.fromFirestoreString('FINAL'), MatchStage.finalMatch);
+      expect(MatchStageX.fromFirestoreString(null), MatchStage.league);
+    });
+
+    test('MatchStage displayName matches requirements', () {
+      expect(MatchStage.finalMatch.displayName, '🏆 Grand Final');
+      expect(MatchStage.playoff.displayName, '⚔️ Playoff (Rank 2 vs 3)');
+      expect(MatchStage.league.displayName, 'League Match');
+    });
+
+    test('MatchModel stage helper getters work correctly', () {
+      const playoff = MatchModel(id: 'm1', matchNumber: 10, stage: 'PLAYOFF', teamAId: 'a', teamBId: 'b', date: '2026-08-25');
+      expect(playoff.isPlayoff, isTrue);
+      expect(playoff.isFinal, isFalse);
+      expect(playoff.stageDisplayName, '⚔️ Playoff (Rank 2 vs 3)');
+
+      const grandFinal = MatchModel(id: 'm2', matchNumber: 11, stage: 'FINAL', teamAId: 'a', teamBId: 'b', date: '2026-08-25');
+      expect(grandFinal.isPlayoff, isFalse);
+      expect(grandFinal.isFinal, isTrue);
+      expect(grandFinal.stageDisplayName, '🏆 Grand Final');
+    });
+  });
+
+  group('Playoff & Grand Final Match Hydration Tests', () {
     const team1 = TeamModel(id: 'team_rs', name: 'Royal Strikers', shortName: 'RS');
     const team2 = TeamModel(id: 'team_tw', name: 'Titan Warriors', shortName: 'TW');
     const team3 = TeamModel(id: 'team_bb', name: 'Blaster Bulls', shortName: 'BB');
@@ -52,39 +83,55 @@ void main() {
       ),
     ];
 
-    test('Hydrates Final match with Rank 1 and Rank 2 when team IDs are unset or placeholders', () {
+    test('Hydrates Playoff match with Rank 2 and Rank 3 teams', () {
+      const playoffMatchTbd = MatchModel(
+        id: 'match_10',
+        matchNumber: 10,
+        stage: 'PLAYOFF',
+        teamAId: 'rank_2',
+        teamBId: 'rank_3',
+        date: '2026-08-25',
+        status: 'UPCOMING',
+      );
+
+      final hydrated = hydrateMatchWithStandings(playoffMatchTbd, standings);
+
+      expect(hydrated.teamAId, equals('team_tw')); // Rank 2
+      expect(hydrated.teamBId, equals('team_bb')); // Rank 3
+      expect(hydrated.isPlayoff, isTrue);
+    });
+
+    test('Hydrates Grand Final match with Rank 1 directly and Winner of Playoff', () {
+      const completedPlayoff = MatchModel(
+        id: 'match_10',
+        matchNumber: 10,
+        stage: 'PLAYOFF',
+        teamAId: 'team_tw',
+        teamBId: 'team_bb',
+        winningTeamId: 'team_bb', // Playoff winner
+        status: 'COMPLETED',
+        date: '2026-08-25',
+      );
+
       const finalMatchTbd = MatchModel(
         id: 'match_11',
         matchNumber: 11,
         stage: 'FINAL',
         teamAId: 'rank_1',
-        teamBId: 'rank_2',
-        date: '2026-08-22',
+        teamBId: 'tbd',
+        date: '2026-08-25',
         status: 'UPCOMING',
       );
 
-      final hydrated = hydrateMatchWithStandings(finalMatchTbd, standings);
-
-      expect(hydrated.teamAId, equals('team_rs'));
-      expect(hydrated.teamBId, equals('team_tw'));
-      expect(hydrated.stage, equals('FINAL'));
-    });
-
-    test('Hydrates Final match when team IDs are empty strings', () {
-      const finalMatchEmpty = MatchModel(
-        id: 'match_final',
-        matchNumber: 10,
-        stage: 'FINAL',
-        teamAId: '',
-        teamBId: '',
-        date: '2026-08-22',
-        status: 'UPCOMING',
+      final hydrated = hydrateMatchWithStandings(
+        finalMatchTbd,
+        standings,
+        allMatches: [completedPlayoff, finalMatchTbd],
       );
 
-      final hydrated = hydrateMatchWithStandings(finalMatchEmpty, standings);
-
-      expect(hydrated.teamAId, equals('team_rs'));
-      expect(hydrated.teamBId, equals('team_tw'));
+      expect(hydrated.teamAId, equals('team_rs')); // Rank 1 directly qualified
+      expect(hydrated.teamBId, equals('team_bb')); // Winner of Playoff
+      expect(hydrated.isFinal, isTrue);
     });
 
     test('Leaves League matches untouched even if standings are available', () {
@@ -102,23 +149,6 @@ void main() {
 
       expect(result.teamAId, equals('team_bb'));
       expect(result.teamBId, equals('team_tw'));
-    });
-
-    test('Preserves already set explicit teams on Final match', () {
-      const finalMatchExplicit = MatchModel(
-        id: 'match_11',
-        matchNumber: 11,
-        stage: 'FINAL',
-        teamAId: 'team_rs',
-        teamBId: 'team_bb',
-        date: '2026-08-22',
-        status: 'UPCOMING',
-      );
-
-      final result = hydrateMatchWithStandings(finalMatchExplicit, standings);
-
-      expect(result.teamAId, equals('team_rs'));
-      expect(result.teamBId, equals('team_bb'));
     });
   });
 }
