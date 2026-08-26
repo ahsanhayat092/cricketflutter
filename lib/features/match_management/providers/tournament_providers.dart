@@ -1,4 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/legacy.dart';
 import '../../scoring/data/firebase_scoring_service.dart';
 import '../../scoring/data/player_repository.dart';
 import '../../scoring/data/scoring_sync_service.dart';
@@ -9,6 +10,7 @@ import '../../scoring/models/tournament_model.dart';
 import '../../scoring/models/innings_model.dart';
 import '../../scoring/models/batting_score.dart';
 import '../../scoring/models/bowling_score.dart';
+import '../../auth/models/tournament_member_model.dart';
 import '../../standings/providers/standings_provider.dart';
 import '../../standings/models/standing.dart';
 
@@ -117,16 +119,43 @@ MatchModel hydrateMatchWithStandings(
   return match;
 }
 
-/// Realtime Tournament Singleton Stream from Firestore (/tournaments/main)
-final tournamentProvider = StreamProvider<TournamentModel?>((ref) {
+/// Active Tournament ID in App Context (default: 'main' WASA Premier League)
+final activeTournamentIdProvider = StateProvider<String>((ref) => 'main');
+
+/// Realtime Stream of All Tournaments on SaaS Platform
+final allTournamentsProvider = StreamProvider<List<TournamentModel>>((ref) {
   final service = ref.watch(scoringServiceProvider);
-  return service.getTournamentStream();
+  return service.getAllTournamentsStream();
 });
 
-/// Realtime Teams Stream from Firestore (/teams)
+/// Realtime Stream of Active Tournament Document
+final activeTournamentProvider = StreamProvider<TournamentModel?>((ref) {
+  final service = ref.watch(scoringServiceProvider);
+  final activeId = ref.watch(activeTournamentIdProvider);
+  return service.getTournamentStream(tournamentId: activeId);
+});
+
+/// Ground Scorer Session Unlocked State (tournamentId -> isUnlocked via 4-Digit PIN)
+final scorerPinSessionProvider = StateProvider<Map<String, bool>>((ref) => {});
+
+/// Realtime Stream of Members for Active Tournament
+final activeTournamentMembersProvider = StreamProvider<List<TournamentMemberModel>>((ref) {
+  final service = ref.watch(scoringServiceProvider);
+  final activeId = ref.watch(activeTournamentIdProvider);
+  return service.getTournamentMembersStream(activeId);
+});
+
+/// Realtime Stream of Tournament Memberships for Logged-In User Email
+final userTournamentMembershipsProvider = StreamProvider.family<List<TournamentMemberModel>, String>((ref, userEmail) {
+  final service = ref.watch(scoringServiceProvider);
+  return service.getUserMembershipsStream(userEmail);
+});
+
+/// Realtime Teams Stream for Active Tournament (/teams where tournamentId == activeId)
 final teamsProvider = StreamProvider<List<TeamModel>>((ref) {
   final service = ref.watch(scoringServiceProvider);
-  return service.getTeamsStream();
+  final activeId = ref.watch(activeTournamentIdProvider);
+  return service.getTeamsStream(tournamentId: activeId);
 });
 
 /// Realtime Players Stream from Firestore (/players)
@@ -141,13 +170,14 @@ final teamPlayersStreamProvider = StreamProvider.family<List<PlayerModel>, Strin
   return repo.getPlayersByTeamStream(teamId);
 });
 
-/// Realtime Matches Stream from Firestore (/matches) with Playoff and Finalist Hydration
+/// Realtime Matches Stream for Active Tournament with Playoff and Finalist Hydration
 final matchesProvider = StreamProvider<List<MatchModel>>((ref) {
   final service = ref.watch(scoringServiceProvider);
+  final activeId = ref.watch(activeTournamentIdProvider);
   final standingsAsync = ref.watch(standingsStreamProvider);
   final standings = standingsAsync.value ?? [];
 
-  return service.getMatchesStream().map((matches) {
+  return service.getMatchesStream(tournamentId: activeId).map((matches) {
     return matches.map((m) => hydrateMatchWithStandings(m, standings, allMatches: matches)).toList();
   });
 });

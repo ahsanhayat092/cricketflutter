@@ -11,6 +11,7 @@ class FirestorePaths {
   static const String bowlingScores = 'bowlingScores';
   static const String standings = 'standings';
   static const String users = 'users';
+  static const String tournamentMembers = 'tournamentMembers';
 
   static String tournament(String id) => '$tournaments/$id';
   static String team(String id) => '$teams/$id';
@@ -21,4 +22,5 @@ class FirestorePaths {
   static String bowlingScore(String id) => '$bowlingScores/$id';
   static String standing(String teamId) => '$standings/$teamId';
   static String user(String uid) => '$users/$uid';
+  static String tournamentMember(String id) => '$tournamentMembers/$id';
 }

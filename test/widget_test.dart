@@ -11,7 +11,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Verify top fixtures title appears
-    expect(find.text('MATCHES & FIXTURES'), findsOneWidget);
+    // Verify active tournament chip and navigation tabs appear
+    expect(find.text('WPL 2026'), findsOneWidget);
+    expect(find.text('Fixtures'), findsOneWidget);
+    expect(find.text('Standings'), findsOneWidget);
   });
 }

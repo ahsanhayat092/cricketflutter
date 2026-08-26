@@ -9,6 +9,7 @@ import '../models/batting_score.dart';
 import '../models/bowling_score.dart';
 import '../../standings/models/standing.dart';
 import '../../auth/models/app_user.dart';
+import '../../auth/models/tournament_member_model.dart';
 
 class FirebaseScoringService {
   final FirebaseFirestore _firestore;
@@ -20,7 +21,49 @@ class FirebaseScoringService {
   // 1. TOURNAMENTS
   // ==========================================
 
-  /// Stream singleton tournament document (default "main")
+  /// Stream all tournaments in SaaS platform
+  Stream<List<TournamentModel>> getAllTournamentsStream() {
+    return _firestore.collection(FirestorePaths.tournaments).snapshots().map((snapshot) {
+      final list = snapshot.docs
+          .map((doc) => TournamentModel.fromMap(doc.data(), id: doc.id))
+          .toList();
+      // Ensure 'main' WASA tournament is included if not in Firestore yet
+      if (!list.any((t) => t.id == 'main')) {
+        list.insert(
+          0,
+          const TournamentModel(
+            id: 'main',
+            name: 'WASA Premier League 2026',
+            shortName: 'WPL 2026',
+            slug: 'wasa-2026',
+          ),
+        );
+      }
+      return list;
+    });
+  }
+
+  /// Get all tournaments once
+  Future<List<TournamentModel>> getAllTournaments() async {
+    final snapshot = await _firestore.collection(FirestorePaths.tournaments).get();
+    final list = snapshot.docs
+        .map((doc) => TournamentModel.fromMap(doc.data(), id: doc.id))
+        .toList();
+    if (!list.any((t) => t.id == 'main')) {
+      list.insert(
+        0,
+        const TournamentModel(
+          id: 'main',
+          name: 'WASA Premier League 2026',
+          shortName: 'WPL 2026',
+          slug: 'wasa-2026',
+        ),
+      );
+    }
+    return list;
+  }
+
+  /// Stream single tournament document
   Stream<TournamentModel> getTournamentStream({String tournamentId = FirestorePaths.tournamentMainId}) {
     return _firestore
         .doc(FirestorePaths.tournament(tournamentId))
@@ -31,7 +74,17 @@ class FirebaseScoringService {
   /// Get tournament once
   Future<TournamentModel?> getTournament({String tournamentId = FirestorePaths.tournamentMainId}) async {
     final doc = await _firestore.doc(FirestorePaths.tournament(tournamentId)).get();
-    if (!doc.exists) return null;
+    if (!doc.exists) {
+      if (tournamentId == 'main') {
+        return const TournamentModel(
+          id: 'main',
+          name: 'WASA Premier League 2026',
+          shortName: 'WPL 2026',
+          slug: 'wasa-2026',
+        );
+      }
+      return null;
+    }
     return TournamentModel.fromMap(doc.data(), id: doc.id);
   }
 
@@ -42,31 +95,91 @@ class FirebaseScoringService {
         .set(tournament.toFirestore(), SetOptions(merge: true));
   }
 
+  /// Update Scorer 4-digit PIN for ground entry
+  Future<void> updateScorerPin({required String tournamentId, required String newPin}) async {
+    await _firestore.doc(FirestorePaths.tournament(tournamentId)).update({
+      'scorerPin': newPin.trim(),
+      'updatedAt': DateTime.now().toIso8601String(),
+    });
+  }
+
+  // ==========================================
+  // 1B. TOURNAMENT MEMBERS (RBAC)
+  // ==========================================
+
+  /// Stream all members of a tournament (Owner, Admins, Scorers)
+  Stream<List<TournamentMemberModel>> getTournamentMembersStream(String tournamentId) {
+    return _firestore
+        .collection(FirestorePaths.tournamentMembers)
+        .where('tournamentId', isEqualTo: tournamentId)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => TournamentMemberModel.fromMap(doc.id, doc.data()))
+          .toList();
+    });
+  }
+
+  /// Stream tournament memberships for a specific logged-in user email
+  Stream<List<TournamentMemberModel>> getUserMembershipsStream(String userEmail) {
+    if (userEmail.isEmpty) return Stream.value([]);
+    final cleanEmail = userEmail.toLowerCase().trim();
+    return _firestore
+        .collection(FirestorePaths.tournamentMembers)
+        .where('userEmail', isEqualTo: cleanEmail)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs
+          .map((doc) => TournamentMemberModel.fromMap(doc.id, doc.data()))
+          .toList();
+    });
+  }
+
+  /// Add or update a tournament member
+  Future<void> saveTournamentMember(TournamentMemberModel member) async {
+    final cleanEmail = member.userEmail.toLowerCase().trim();
+    final memberId = '${member.tournamentId}_$cleanEmail';
+    await _firestore
+        .collection(FirestorePaths.tournamentMembers)
+        .doc(memberId)
+        .set(member.toMap(), SetOptions(merge: true));
+  }
+
+  /// Remove a member from tournament
+  Future<void> removeTournamentMember(String memberDocId) async {
+    await _firestore.collection(FirestorePaths.tournamentMembers).doc(memberDocId).delete();
+  }
+
   // ==========================================
   // 2. TEAMS
   // ==========================================
 
   /// Stream all teams for tournament
   Stream<List<TeamModel>> getTeamsStream({String tournamentId = 'main'}) {
-    return _firestore
-        .collection(FirestorePaths.teams)
-        .where('tournamentId', isEqualTo: tournamentId)
-        .snapshots()
-        .map((snapshot) {
+    return _firestore.collection(FirestorePaths.teams).snapshots().map((snapshot) {
       return snapshot.docs
           .map((doc) => TeamModel.fromMap(doc.id, doc.data()))
+          .where((t) {
+            if (tournamentId == 'main') {
+              return t.tournamentId.isEmpty || t.tournamentId == 'main';
+            }
+            return t.tournamentId == tournamentId;
+          })
           .toList();
     });
   }
 
   /// Fetch all teams once
   Future<List<TeamModel>> getTeams({String tournamentId = 'main'}) async {
-    final snapshot = await _firestore
-        .collection(FirestorePaths.teams)
-        .where('tournamentId', isEqualTo: tournamentId)
-        .get();
+    final snapshot = await _firestore.collection(FirestorePaths.teams).get();
     return snapshot.docs
         .map((doc) => TeamModel.fromMap(doc.id, doc.data()))
+        .where((t) {
+          if (tournamentId == 'main') {
+            return t.tournamentId.isEmpty || t.tournamentId == 'main';
+          }
+          return t.tournamentId == tournamentId;
+        })
         .toList();
   }
 
@@ -133,13 +246,15 @@ class FirebaseScoringService {
 
   /// Stream all matches for tournament
   Stream<List<MatchModel>> getMatchesStream({String tournamentId = 'main'}) {
-    return _firestore
-        .collection(FirestorePaths.matches)
-        .where('tournamentId', isEqualTo: tournamentId)
-        .snapshots()
-        .map((snapshot) {
+    return _firestore.collection(FirestorePaths.matches).snapshots().map((snapshot) {
       final list = snapshot.docs
           .map((doc) => MatchModel.fromMap(doc.id, doc.data()))
+          .where((m) {
+            if (tournamentId == 'main') {
+              return m.tournamentId.isEmpty || m.tournamentId == 'main';
+            }
+            return m.tournamentId == tournamentId;
+          })
           .toList();
       list.sort((a, b) => a.matchNumber.compareTo(b.matchNumber));
       return list;
@@ -148,12 +263,15 @@ class FirebaseScoringService {
 
   /// Fetch all matches once
   Future<List<MatchModel>> getMatches({String tournamentId = 'main'}) async {
-    final snapshot = await _firestore
-        .collection(FirestorePaths.matches)
-        .where('tournamentId', isEqualTo: tournamentId)
-        .get();
+    final snapshot = await _firestore.collection(FirestorePaths.matches).get();
     final list = snapshot.docs
         .map((doc) => MatchModel.fromMap(doc.id, doc.data()))
+        .where((m) {
+          if (tournamentId == 'main') {
+            return m.tournamentId.isEmpty || m.tournamentId == 'main';
+          }
+          return m.tournamentId == tournamentId;
+        })
         .toList();
     list.sort((a, b) => a.matchNumber.compareTo(b.matchNumber));
     return list;
@@ -310,13 +428,15 @@ class FirebaseScoringService {
 
   /// Stream tournament standings
   Stream<List<StandingModel>> getStandingsStream({String tournamentId = 'main'}) {
-    return _firestore
-        .collection(FirestorePaths.standings)
-        .where('tournamentId', isEqualTo: tournamentId)
-        .snapshots()
-        .map((snapshot) {
+    return _firestore.collection(FirestorePaths.standings).snapshots().map((snapshot) {
       final list = snapshot.docs
           .map((doc) => StandingModel.fromMap(doc.id, doc.data()))
+          .where((s) {
+            if (tournamentId == 'main') {
+              return s.tournamentId.isEmpty || s.tournamentId == 'main';
+            }
+            return s.tournamentId == tournamentId;
+          })
           .toList();
       list.sort((a, b) {
         final ptsComp = b.points.compareTo(a.points);
@@ -331,12 +451,15 @@ class FirebaseScoringService {
 
   /// Fetch standings once
   Future<List<StandingModel>> getStandings({String tournamentId = 'main'}) async {
-    final snapshot = await _firestore
-        .collection(FirestorePaths.standings)
-        .where('tournamentId', isEqualTo: tournamentId)
-        .get();
+    final snapshot = await _firestore.collection(FirestorePaths.standings).get();
     final list = snapshot.docs
         .map((doc) => StandingModel.fromMap(doc.id, doc.data()))
+        .where((s) {
+          if (tournamentId == 'main') {
+            return s.tournamentId.isEmpty || s.tournamentId == 'main';
+          }
+          return s.tournamentId == tournamentId;
+        })
         .toList();
     list.sort((a, b) {
       final ptsComp = b.points.compareTo(a.points);

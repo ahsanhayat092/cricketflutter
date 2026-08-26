@@ -4,31 +4,40 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../scoring/models/team_model.dart';
 import '../models/standing.dart';
 
+import '../../match_management/providers/tournament_providers.dart';
+
 /// StreamProvider for live standings joined with team metadata strictly from Cloud Firestore
 final standingsStreamProvider = StreamProvider<List<StandingWithTeam>>((ref) {
   final firestore = FirebaseFirestore.instance;
+  final activeTournamentId = ref.watch(activeTournamentIdProvider);
 
   return firestore
       .collection('standings')
-      .where('tournamentId', isEqualTo: 'main')
       .snapshots()
       .asyncMap((standingsSnap) async {
     final teamsSnap = await firestore
         .collection('teams')
-        .where('tournamentId', isEqualTo: 'main')
         .get();
 
     final teamsMap = {
       for (var doc in teamsSnap.docs) doc.id: TeamModel.fromFirestore(doc)
     };
 
-    final list = standingsSnap.docs.map((doc) {
-      final standing = StandingModel.fromFirestore(doc);
-      return StandingWithTeam(
-        standing: standing,
-        team: teamsMap[standing.teamId],
-      );
-    }).toList();
+    final list = standingsSnap.docs
+        .map((doc) => StandingModel.fromFirestore(doc))
+        .where((s) {
+          if (activeTournamentId == 'main') {
+            return s.tournamentId.isEmpty || s.tournamentId == 'main';
+          }
+          return s.tournamentId == activeTournamentId;
+        })
+        .map((standing) {
+          return StandingWithTeam(
+            standing: standing,
+            team: teamsMap[standing.teamId],
+          );
+        })
+        .toList();
 
     // Sort strictly by position ASC (1, 2, 3...) or by Points then NRR if position is equal
     list.sort((a, b) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -12,6 +13,9 @@ import '../../live_viewer/presentation/live_match_screen.dart';
 import '../../live_viewer/presentation/match_scorecard_screen.dart';
 import '../providers/tournament_providers.dart';
 import 'match_lineup_screen.dart';
+import 'tournament_discovery_dialog.dart';
+import 'tournament_permissions_screen.dart';
+import '../../auth/presentation/scorer_pin_auth_dialog.dart';
 
 class FixturesScreen extends ConsumerStatefulWidget {
   const FixturesScreen({super.key});
@@ -36,11 +40,27 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
     super.dispose();
   }
 
+  void _shareTournamentWhatsApp() async {
+    final tournament = ref.read(activeTournamentProvider).value;
+    if (tournament == null) return;
+    final text = Uri.encodeComponent(tournament.shareWhatsAppText);
+    final url = Uri.parse('https://api.whatsapp.com/send?text=$text');
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+      }
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final matchesAsync = ref.watch(matchesProvider);
     final teamsAsync = ref.watch(teamsProvider);
     final user = ref.watch(currentUserProvider);
+    final activeTournamentAsync = ref.watch(activeTournamentProvider);
+    final activeId = ref.watch(activeTournamentIdProvider);
+    final isPinUnlocked = ref.watch(scorerPinSessionProvider)[activeId] == true;
+    final canScore = user.canScore || isPinUnlocked;
 
     final allMatches = matchesAsync.value ?? [];
     final allTeams = teamsAsync.value ?? [];
@@ -51,21 +71,86 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
     final upcomingMatches = allMatches.where((m) => m.isUpcoming).toList();
     final completedMatches = allMatches.where((m) => m.isCompleted).toList();
 
+    final tournament = activeTournamentAsync.value;
+    final tournamentTitle = tournament?.shortName ?? 'WPL 2026';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: Text(
-          'MATCHES & FIXTURES',
-          style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1.0),
+        titleSpacing: 12,
+        title: InkWell(
+          onTap: () {
+            showDialog(
+              context: context,
+              builder: (_) => const TournamentDiscoveryDialog(),
+            );
+          },
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLight,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.emoji_events_rounded, color: AppColors.accent, size: 16),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    tournamentTitle,
+                    overflow: TextOverflow.ellipsis,
+                    style: GoogleFonts.outfit(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.arrow_drop_down_rounded, color: AppColors.accent, size: 20),
+              ],
+            ),
+          ),
         ),
         actions: [
+          // Ground Scorer PIN Access
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: AppColors.accentCyan),
-            tooltip: 'Refresh Matches',
+            icon: Icon(
+              isPinUnlocked ? Icons.verified_user_rounded : Icons.pin_rounded,
+              color: isPinUnlocked ? AppColors.accent : AppColors.textMuted,
+            ),
+            tooltip: 'Ground Scorer PIN',
             onPressed: () {
-              ref.invalidate(matchesProvider);
-              ref.invalidate(teamsProvider);
+              if (tournament != null) {
+                showDialog(
+                  context: context,
+                  builder: (_) => ScorerPinAuthDialog(
+                    tournamentId: tournament.id,
+                    tournamentName: tournament.name,
+                  ),
+                );
+              }
             },
+          ),
+          // People & Permissions (RBAC)
+          IconButton(
+            icon: const Icon(Icons.shield_outlined, color: AppColors.accentCyan),
+            tooltip: 'People & Permissions',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const TournamentPermissionsScreen()),
+              );
+            },
+          ),
+          // WhatsApp Share Tournament
+          IconButton(
+            icon: const Icon(Icons.share_rounded, color: AppColors.accent),
+            tooltip: 'Share on WhatsApp',
+            onPressed: _shareTournamentWhatsApp,
           ),
         ],
         bottom: TabBar(
@@ -220,11 +305,22 @@ class _MatchCard extends ConsumerWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
           onTap: () {
-            if (match.isUpcoming && canScore) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => MatchLineupScreen(match: match)),
-              );
+            if (match.isUpcoming) {
+              if (canScore) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => MatchLineupScreen(match: match)),
+                );
+              } else {
+                final tournament = ref.read(activeTournamentProvider).value;
+                showDialog(
+                  context: context,
+                  builder: (_) => ScorerPinAuthDialog(
+                    tournamentId: match.tournamentId.isNotEmpty ? match.tournamentId : 'main',
+                    tournamentName: tournament?.name ?? 'Tournament',
+                  ),
+                );
+              }
             } else if (match.isCompleted) {
               Navigator.push(
                 context,
@@ -242,7 +338,7 @@ class _MatchCard extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. Header: Match Number, Stage, Venue, Status
+                // 1. Header: Match Number, Stage, Venue, Status, Share
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -254,7 +350,29 @@ class _MatchCard extends ConsumerWidget {
                         color: AppColors.textMuted,
                       ),
                     ),
-                    _buildStatusBadge(match.status),
+                    Row(
+                      children: [
+                        IconButton(
+                          onPressed: () {
+                            final tournament = ref.read(activeTournamentProvider).value;
+                            final tournamentName = tournament?.name ?? 'WASA Cricket';
+                            final shareUrl = tournament?.shareUrl ?? 'https://wasacricket.vercel.app';
+                            final message = '🏏 *$tournamentName - Match #${match.matchNumber}*\n'
+                                '⚔️ *${teamA.name}* vs *${teamB.name}*\n'
+                                '${match.resultText ?? (match.isLive ? "🔴 Live Match in Progress" : "📅 Scheduled on ${match.date} ${match.time}")}\n\n'
+                                '📊 View Live Scorecard: $shareUrl';
+                            final text = Uri.encodeComponent(message);
+                            final url = Uri.parse('https://api.whatsapp.com/send?text=$text');
+                            launchUrl(url, mode: LaunchMode.externalApplication);
+                          },
+                          icon: const Icon(Icons.share_rounded, size: 16, color: AppColors.accentCyan),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                        const SizedBox(width: 8),
+                        _buildStatusBadge(match.status),
+                      ],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),
