@@ -59,8 +59,7 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
     final user = ref.watch(currentUserProvider);
     final activeTournamentAsync = ref.watch(activeTournamentProvider);
     final activeId = ref.watch(activeTournamentIdProvider);
-    final isPinUnlocked = ref.watch(scorerPinSessionProvider)[activeId] == true;
-    final canScore = user.canScore || isPinUnlocked;
+    final canScore = ref.watch(isTournamentScorableProvider(activeId));
 
     final allMatches = matchesAsync.value ?? [];
     final allTeams = teamsAsync.value ?? [];
@@ -119,20 +118,18 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
           // Ground Scorer PIN Access
           IconButton(
             icon: Icon(
-              isPinUnlocked ? Icons.verified_user_rounded : Icons.pin_rounded,
-              color: isPinUnlocked ? AppColors.accent : AppColors.textMuted,
+              canScore ? Icons.verified_user_rounded : Icons.pin_rounded,
+              color: canScore ? AppColors.accent : AppColors.textMuted,
             ),
             tooltip: 'Ground Scorer PIN',
             onPressed: () {
-              if (tournament != null) {
-                showDialog(
-                  context: context,
-                  builder: (_) => ScorerPinAuthDialog(
-                    tournamentId: tournament.id,
-                    tournamentName: tournament.name,
-                  ),
-                );
-              }
+              showDialog(
+                context: context,
+                builder: (_) => ScorerPinAuthDialog(
+                  initialTournamentId: tournament?.id,
+                  initialTournamentName: tournament?.name,
+                ),
+              );
             },
           ),
           // People & Permissions (RBAC)
@@ -316,8 +313,8 @@ class _MatchCard extends ConsumerWidget {
                 showDialog(
                   context: context,
                   builder: (_) => ScorerPinAuthDialog(
-                    tournamentId: match.tournamentId.isNotEmpty ? match.tournamentId : 'main',
-                    tournamentName: tournament?.name ?? 'Tournament',
+                    initialTournamentId: match.tournamentId.isNotEmpty ? match.tournamentId : 'main',
+                    initialTournamentName: tournament?.name ?? 'Tournament',
                   ),
                 );
               }

@@ -6,6 +6,8 @@ import '../../../core/constants/app_colors.dart';
 import '../providers/auth_provider.dart';
 import '../../scoring/presentation/scorer_console_screen.dart';
 import '../../match_management/presentation/fixtures_screen.dart';
+import '../../match_management/providers/tournament_providers.dart';
+import 'scorer_pin_auth_dialog.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -19,6 +21,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  int _mainAuthTab = 0; // 0: Ground Scorer PIN, 1: Official Account
   bool _isSignUpMode = false;
   bool _obscurePassword = true;
   bool _isLoading = false;
@@ -210,6 +213,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider);
+    final unlockedTournaments = ref.watch(unlockedTournamentsProvider);
 
     return Scaffold(
       body: SafeArea(
@@ -221,8 +225,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               // Header Brand Emblem
               Center(
                 child: Container(
-                  width: 80,
-                  height: 80,
+                  width: 72,
+                  height: 72,
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [AppColors.accent, AppColors.accentCyan],
@@ -240,17 +244,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ),
                   child: const Icon(
                     Icons.sports_cricket,
-                    size: 42,
+                    size: 38,
                     color: Colors.black,
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               Text(
-                'WASA PREMIER LEAGUE',
+                'CRICKET SCORER ACCESS',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.outfit(
-                  fontSize: 24,
+                  fontSize: 22,
                   fontWeight: FontWeight.w900,
                   color: AppColors.textPrimary,
                   letterSpacing: 1.2,
@@ -258,7 +262,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                'Official Scoring & Administration Portal',
+                'Multi-Tenant Scoring & Match Control',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.outfit(
                   fontSize: 13,
@@ -266,10 +270,89 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 20),
 
-              // If Logged in as Scorer or Admin -> Show Official Portal Dashboard
-              if (user.canScore)
+              // 2-Way Tab Bar: Ground Scorer PIN vs Official Account
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _mainAuthTab = 0),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _mainAuthTab == 0 ? AppColors.accent : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.pin_rounded,
+                                size: 16,
+                                color: _mainAuthTab == 0 ? Colors.black : AppColors.textMuted,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                'Matchday PIN (${unlockedTournaments.length})',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _mainAuthTab == 0 ? Colors.black : AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: GestureDetector(
+                        onTap: () => setState(() => _mainAuthTab = 1),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          decoration: BoxDecoration(
+                            color: _mainAuthTab == 1 ? AppColors.accent : Colors.transparent,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.account_circle_outlined,
+                                size: 16,
+                                color: _mainAuthTab == 1 ? Colors.black : AppColors.textMuted,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                user.canScore ? 'Official Portal' : 'Official Login',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: _mainAuthTab == 1 ? Colors.black : AppColors.textMuted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // TAB 0: Ground Scorer PIN Section
+              if (_mainAuthTab == 0)
+                _buildMatchdayPinSection()
+              // TAB 1: Official Account Section
+              else if (user.canScore)
                 _buildAuthenticatedPortal(user)
               else
                 _buildPublicLoginForm(),
@@ -277,6 +360,191 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  // -------------------------------------------------------------
+  // MATCHDAY PIN SECTION (Scoped Tournament Unlocks)
+  // -------------------------------------------------------------
+  Widget _buildMatchdayPinSection() {
+    final allTournamentsAsync = ref.watch(allTournamentsProvider);
+    final unlockedIds = ref.watch(unlockedTournamentsProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // Action Button: Enter Tournament PIN
+        SizedBox(
+          height: 48,
+          child: ElevatedButton.icon(
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (_) => const ScorerPinAuthDialog(),
+              );
+            },
+            icon: const Icon(Icons.pin_rounded, size: 20),
+            label: Text(
+              'ENTER 4-DIGIT SCORER PIN',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 13),
+            ),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.accent,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // Unlocked Tournaments Header
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Unlocked Tournaments (${unlockedIds.length})',
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            if (unlockedIds.isNotEmpty)
+              TextButton(
+                onPressed: () async {
+                  await ref.read(unlockedTournamentsProvider.notifier).clearAll();
+                },
+                child: Text(
+                  'Lock All',
+                  style: GoogleFonts.outfit(fontSize: 12, color: AppColors.wicket),
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        if (unlockedIds.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.lock_outline_rounded, size: 36, color: AppColors.textMuted),
+                const SizedBox(height: 10),
+                Text(
+                  'No Tournaments Unlocked',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Ground Scorers can select a tournament and enter its 4-digit PIN above to score matches.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          )
+        else
+          allTournamentsAsync.when(
+            data: (tournaments) {
+              final unlockedList = tournaments.where((t) => unlockedIds.contains(t.id)).toList();
+
+              return ListView.separated(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: unlockedList.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, index) {
+                  final tour = unlockedList[index];
+                  return Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.cardBackground,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: AppColors.accent.withValues(alpha: 0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: AppColors.accent,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.sports_cricket, color: Colors.black, size: 16),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    tour.name,
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppColors.textPrimary,
+                                    ),
+                                  ),
+                                  Text(
+                                    '${tour.oversPerSide} Overs • ${tour.venueName}',
+                                    style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textMuted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Lock Tournament',
+                              onPressed: () async {
+                                await ref.read(unlockedTournamentsProvider.notifier).lockTournament(tour.id);
+                              },
+                              icon: const Icon(Icons.lock_rounded, size: 18, color: AppColors.wicket),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.surfaceLight,
+                                  foregroundColor: AppColors.accentCyan,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                                onPressed: () {
+                                  ref.read(activeTournamentIdProvider.notifier).state = tour.id;
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(builder: (_) => const FixturesScreen()),
+                                  );
+                                },
+                                icon: const Icon(Icons.scoreboard_outlined, size: 16),
+                                label: Text(
+                                  'Score Matches',
+                                  style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+            loading: () => const Center(child: CircularProgressIndicator(color: AppColors.accent)),
+            error: (e, _) => Center(child: Text('Error: $e')),
+          ),
+      ],
     );
   }
 

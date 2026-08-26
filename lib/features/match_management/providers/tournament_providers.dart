@@ -11,6 +11,8 @@ import '../../scoring/models/innings_model.dart';
 import '../../scoring/models/batting_score.dart';
 import '../../scoring/models/bowling_score.dart';
 import '../../auth/models/tournament_member_model.dart';
+import '../../auth/services/scorer_security_service.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../standings/providers/standings_provider.dart';
 import '../../standings/models/standing.dart';
 
@@ -24,6 +26,46 @@ final playerRepositoryProvider = Provider<PlayerRepository>((ref) {
 
 final scoringSyncServiceProvider = Provider<ScoringSyncService>((ref) {
   return ScoringSyncService();
+});
+
+final scorerSecurityServiceProvider = Provider<ScorerSecurityService>((ref) {
+  return ScorerSecurityService();
+});
+
+/// StateNotifier to manage and persist Unlocked Tournaments locally
+class UnlockedTournamentsNotifier extends StateNotifier<Set<String>> {
+  final ScorerSecurityService _securityService;
+
+  UnlockedTournamentsNotifier(this._securityService) : super({}) {
+    _loadUnlocked();
+  }
+
+  Future<void> _loadUnlocked() async {
+    final unlocked = await _securityService.getUnlockedTournamentIds();
+    state = unlocked;
+  }
+
+  Future<void> unlockTournament(String tournamentId) async {
+    await _securityService.unlockTournament(tournamentId);
+    state = {...state, tournamentId};
+  }
+
+  Future<void> lockTournament(String tournamentId) async {
+    await _securityService.lockTournament(tournamentId);
+    final updated = Set<String>.from(state)..remove(tournamentId);
+    state = updated;
+  }
+
+  Future<void> clearAll() async {
+    await _securityService.clearAllUnlocked();
+    state = {};
+  }
+}
+
+final unlockedTournamentsProvider =
+    StateNotifierProvider<UnlockedTournamentsNotifier, Set<String>>((ref) {
+  final securityService = ref.watch(scorerSecurityServiceProvider);
+  return UnlockedTournamentsNotifier(securityService);
 });
 
 /// Helper to dynamically hydrate Playoff (Rank 2 vs Rank 3) and Final (Rank 1 vs Winner of Playoff / Rank 2)
@@ -149,6 +191,43 @@ final activeTournamentMembersProvider = StreamProvider<List<TournamentMemberMode
 final userTournamentMembershipsProvider = StreamProvider.family<List<TournamentMemberModel>, String>((ref, userEmail) {
   final service = ref.watch(scoringServiceProvider);
   return service.getUserMembershipsStream(userEmail);
+});
+
+/// Evaluates whether current user has live scoring access for a specific tournament
+final isTournamentScorableProvider = Provider.family<bool, String>((ref, tournamentId) {
+  final currentUser = ref.watch(currentUserProvider);
+  if (currentUser.isAdmin) return true;
+
+  final unlockedSet = ref.watch(unlockedTournamentsProvider);
+  if (unlockedSet.contains(tournamentId)) return true;
+
+  if (currentUser.email.isNotEmpty) {
+    final membershipsAsync = ref.watch(userTournamentMembershipsProvider(currentUser.email));
+    final memberships = membershipsAsync.value ?? [];
+    if (memberships.any((m) => m.tournamentId == tournamentId && m.canScore)) {
+      return true;
+    }
+  }
+
+  return false;
+});
+
+/// List of Tournaments that the user is authorized to score
+final scorableTournamentsProvider = Provider<List<TournamentModel>>((ref) {
+  final allTournamentsAsync = ref.watch(allTournamentsProvider);
+  final allTournaments = allTournamentsAsync.value ?? [];
+  final currentUser = ref.watch(currentUserProvider);
+
+  if (currentUser.isAdmin) return allTournaments;
+
+  final unlockedSet = ref.watch(unlockedTournamentsProvider);
+  final membershipsAsync = currentUser.email.isNotEmpty
+      ? ref.watch(userTournamentMembershipsProvider(currentUser.email))
+      : const AsyncValue.data(<TournamentMemberModel>[]);
+  final memberships = membershipsAsync.value ?? [];
+  final memberTournamentIds = memberships.where((m) => m.canScore).map((m) => m.tournamentId).toSet();
+
+  return allTournaments.where((t) => unlockedSet.contains(t.id) || memberTournamentIds.contains(t.id)).toList();
 });
 
 /// Realtime Teams Stream for Active Tournament (/teams where tournamentId == activeId)

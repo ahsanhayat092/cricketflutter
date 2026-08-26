@@ -392,8 +392,8 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
                                   showDialog(
                                     context: context,
                                     builder: (_) => ScorerPinAuthDialog(
-                                      tournamentId: item.id,
-                                      tournamentName: item.name,
+                                      initialTournamentId: item.id,
+                                      initialTournamentName: item.name,
                                     ),
                                   );
                                 },
