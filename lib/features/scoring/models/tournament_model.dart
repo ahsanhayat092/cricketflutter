@@ -1,3 +1,5 @@
+import 'match_rules_model.dart';
+
 class TournamentBranding {
   final String primaryColor;
   final String accentColor;
@@ -34,6 +36,7 @@ class TournamentModel {
   final bool allowLastManStanding;
   final String scorerPin; // 4-digit PIN, default '1234'
   final String? ownerId;
+  final String? ownerEmail;
   final TournamentBranding branding;
   final String venueName;
   final String? venueMapsUrl;
@@ -59,6 +62,7 @@ class TournamentModel {
     this.allowLastManStanding = true,
     this.scorerPin = '1234',
     this.ownerId,
+    this.ownerEmail,
     this.branding = const TournamentBranding(),
     this.venueName = 'WASA Sports Complex',
     this.venueMapsUrl,
@@ -72,12 +76,24 @@ class TournamentModel {
     this.updatedAt,
   });
 
+  MatchRulesModel get rules => MatchRulesModel(
+        formatType: formatType,
+        oversPerSide: oversPerSide,
+        maxOverPerBowler: maxOverPerBowler,
+        playersPerTeam: playersPerTeam,
+        maxWickets: maxWickets,
+        allowLastManStanding: allowLastManStanding,
+        freeHitEnabled: true,
+        noBallRuns: 1,
+        wideRuns: 1,
+      );
+
   bool isPinValid(String pin) => pin.trim() == scorerPin.trim();
 
   String get shareUrl => 'https://wasacricket.vercel.app/t/$slug';
 
   String get shareWhatsAppText =>
-      '🏏 Follow *$name* on WASA Cricket!\n📊 Live Scores & Standings: $shareUrl';
+      '🏏 Follow *$name* on PitchPe!\n📊 Live Scores & Standings: $shareUrl';
 
   factory TournamentModel.fromMap(Map<String, dynamic>? data, {String id = 'main'}) {
     if (data == null) {
@@ -101,6 +117,7 @@ class TournamentModel {
       allowLastManStanding: data['allowLastManStanding'] as bool? ?? true,
       scorerPin: data['scorerPin'] as String? ?? '1234',
       ownerId: data['ownerId'] as String?,
+      ownerEmail: data['ownerEmail'] as String?,
       branding: TournamentBranding.fromMap(data['branding'] as Map<String, dynamic>?),
       venueName: data['venueName'] as String? ?? 'WASA Sports Complex',
       venueMapsUrl: data['venueMapsUrl'] as String?,
@@ -131,6 +148,7 @@ class TournamentModel {
       'allowLastManStanding': allowLastManStanding,
       'scorerPin': scorerPin,
       if (ownerId != null) 'ownerId': ownerId,
+      if (ownerEmail != null) 'ownerEmail': ownerEmail,
       'branding': branding.toMap(),
       'venueName': venueName,
       if (venueMapsUrl != null) 'venueMapsUrl': venueMapsUrl,
@@ -160,6 +178,7 @@ class TournamentModel {
     bool? allowLastManStanding,
     String? scorerPin,
     String? ownerId,
+    String? ownerEmail,
     TournamentBranding? branding,
     String? venueName,
     String? venueMapsUrl,
@@ -185,6 +204,7 @@ class TournamentModel {
       allowLastManStanding: allowLastManStanding ?? this.allowLastManStanding,
       scorerPin: scorerPin ?? this.scorerPin,
       ownerId: ownerId ?? this.ownerId,
+      ownerEmail: ownerEmail ?? this.ownerEmail,
       branding: branding ?? this.branding,
       venueName: venueName ?? this.venueName,
       venueMapsUrl: venueMapsUrl ?? this.venueMapsUrl,

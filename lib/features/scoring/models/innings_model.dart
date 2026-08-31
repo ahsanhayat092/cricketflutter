@@ -4,6 +4,7 @@ import '../../../core/utils/cricket_calculator.dart';
 class InningsModel {
   final String id;
   final String matchId;
+  final String tournamentId;
   final int inningsNumber; // 1 | 2
   final String battingTeamId;
   final String bowlingTeamId;
@@ -19,12 +20,17 @@ class InningsModel {
   final bool completed;
   final bool isFreeHit;
   final List<String> recentBalls;
+  final String? currentBowlerId;
+  final String? strikerId;
+  final String? nonStrikerId;
+  final String? previousBowlerId;
   final String? createdAt;
   final String? updatedAt;
 
   const InningsModel({
     required this.id,
     required this.matchId,
+    this.tournamentId = 'main',
     required this.inningsNumber,
     required this.battingTeamId,
     required this.bowlingTeamId,
@@ -40,6 +46,10 @@ class InningsModel {
     this.completed = false,
     this.isFreeHit = false,
     this.recentBalls = const [],
+    this.currentBowlerId,
+    this.strikerId,
+    this.nonStrikerId,
+    this.previousBowlerId,
     this.createdAt,
     this.updatedAt,
   });
@@ -53,6 +63,7 @@ class InningsModel {
       return InningsModel(
         id: id,
         matchId: '',
+        tournamentId: 'main',
         inningsNumber: 1,
         battingTeamId: '',
         bowlingTeamId: '',
@@ -60,10 +71,15 @@ class InningsModel {
     }
     return InningsModel(
       id: id,
-      matchId: data['matchId'] as String? ?? '',
+      matchId: (data['matchId'] as String?) ?? (data['match_id'] as String?) ?? '',
+      tournamentId: (data['tournamentId'] as String?) ?? (data['tournament_id'] as String?) ?? 'main',
       inningsNumber: (data['inningsNumber'] as num?)?.toInt() ?? 1,
-      battingTeamId: data['battingTeamId'] as String? ?? '',
-      bowlingTeamId: data['bowlingTeamId'] as String? ?? '',
+      battingTeamId: (data['battingTeamId'] as String?) ??
+          (data['batting_team_id'] as String?) ??
+          '',
+      bowlingTeamId: (data['bowlingTeamId'] as String?) ??
+          (data['bowling_team_id'] as String?) ??
+          '',
       runs: (data['runs'] as num?)?.toInt() ?? 0,
       wickets: (data['wickets'] as num?)?.toInt() ?? 0,
       balls: (data['balls'] as num?)?.toInt() ?? 0,
@@ -76,6 +92,10 @@ class InningsModel {
       completed: data['completed'] as bool? ?? false,
       isFreeHit: data['isFreeHit'] as bool? ?? false,
       recentBalls: (data['recentBalls'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+      currentBowlerId: data['currentBowlerId'] as String?,
+      strikerId: data['strikerId'] as String?,
+      nonStrikerId: data['nonStrikerId'] as String?,
+      previousBowlerId: data['previousBowlerId'] as String?,
       createdAt: data['createdAt'] as String?,
       updatedAt: data['updatedAt'] as String?,
     );
@@ -90,6 +110,7 @@ class InningsModel {
   Map<String, dynamic> toMap() {
     return {
       'matchId': matchId,
+      'tournamentId': tournamentId,
       'inningsNumber': inningsNumber,
       'battingTeamId': battingTeamId,
       'bowlingTeamId': bowlingTeamId,
@@ -105,6 +126,10 @@ class InningsModel {
       'completed': completed,
       'isFreeHit': isFreeHit,
       'recentBalls': recentBalls,
+      if (currentBowlerId != null) 'currentBowlerId': currentBowlerId,
+      if (strikerId != null) 'strikerId': strikerId,
+      if (nonStrikerId != null) 'nonStrikerId': nonStrikerId,
+      if (previousBowlerId != null) 'previousBowlerId': previousBowlerId,
       if (createdAt != null) 'createdAt': createdAt,
       'updatedAt': updatedAt ?? DateTime.now().toIso8601String(),
     };
@@ -115,6 +140,7 @@ class InningsModel {
   InningsModel copyWith({
     String? id,
     String? matchId,
+    String? tournamentId,
     int? inningsNumber,
     String? battingTeamId,
     String? bowlingTeamId,
@@ -130,6 +156,11 @@ class InningsModel {
     bool? completed,
     bool? isFreeHit,
     List<String>? recentBalls,
+    String? currentBowlerId,
+    bool clearCurrentBowler = false,
+    String? strikerId,
+    String? nonStrikerId,
+    String? previousBowlerId,
     String? createdAt,
     String? updatedAt,
   }) {
@@ -151,6 +182,10 @@ class InningsModel {
       completed: completed ?? this.completed,
       isFreeHit: isFreeHit ?? this.isFreeHit,
       recentBalls: recentBalls ?? this.recentBalls,
+      currentBowlerId: clearCurrentBowler ? null : (currentBowlerId ?? this.currentBowlerId),
+      strikerId: strikerId ?? this.strikerId,
+      nonStrikerId: nonStrikerId ?? this.nonStrikerId,
+      previousBowlerId: previousBowlerId ?? this.previousBowlerId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

@@ -1,6 +1,6 @@
 {
-    "name": "wpl_cricket_app",
-    "short_name": "wpl_cricket_app",
+    "name": "PitchPe",
+    "short_name": "PitchPe",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../scoring/models/tournament_model.dart';
+import '../../auth/models/tournament_member_model.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../providers/tournament_providers.dart';
 import '../../auth/presentation/scorer_pin_auth_dialog.dart';
 
@@ -187,6 +189,7 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
                       final pin = pinController.text.trim().isEmpty ? '1234' : pinController.text.trim();
                       if (name.isEmpty || shortName.isEmpty) return;
 
+                      final user = ref.read(currentUserProvider);
                       final autoId = 'tour_${DateTime.now().millisecondsSinceEpoch}';
                       final slug = name.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-');
 
@@ -199,6 +202,8 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
                         oversPerSide: overs,
                         maxWickets: maxWickets,
                         scorerPin: pin,
+                        ownerId: user.uid.isNotEmpty && user.uid != 'guest' ? user.uid : null,
+                        ownerEmail: user.email.isNotEmpty ? user.email : null,
                         venueName: venueController.text.trim(),
                         status: 'LIVE',
                         createdAt: DateTime.now().toIso8601String(),
@@ -206,6 +211,22 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
 
                       final service = ref.read(scoringServiceProvider);
                       await service.saveTournament(newTournament);
+
+                      if (user.email.isNotEmpty) {
+                        final ownerMember = TournamentMemberModel(
+                          id: '${autoId}_${user.email.toLowerCase().trim()}',
+                          tournamentId: autoId,
+                          userId: user.uid,
+                          userEmail: user.email,
+                          userName: user.name.isNotEmpty ? user.name : user.email.split('@').first,
+                          role: 'OWNER',
+                          createdAt: DateTime.now().toIso8601String(),
+                        );
+                        await service.saveTournamentMember(ownerMember);
+                      }
+
+                      // Unlock for current user session
+                      await ref.read(unlockedTournamentsProvider.notifier).unlockTournament(autoId);
 
                       // Set active
                       ref.read(activeTournamentIdProvider.notifier).state = autoId;
@@ -230,15 +251,22 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
 
   @override
   Widget build(BuildContext context) {
-    final tournamentsAsync = ref.watch(allTournamentsProvider);
+    final currentUser = ref.watch(currentUserProvider);
+    final isPlatformAdmin = currentUser.isPlatformAdmin;
+    final unlockedIds = ref.watch(unlockedTournamentsProvider);
+    final allTournamentsAsync = ref.watch(allTournamentsProvider);
+    final scorableTournaments = ref.watch(scorableTournamentsProvider);
     final activeId = ref.watch(activeTournamentIdProvider);
+
+    // Scorers and PIN users are scoped to authorized tournaments
+    final isScopedScorer = !isPlatformAdmin && (currentUser.isScorer || unlockedIds.isNotEmpty);
 
     return Dialog(
       backgroundColor: AppColors.cardBackground,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
       child: Container(
         padding: const EdgeInsets.all(20),
-        constraints: const BoxConstraints(maxHeight: 560, maxWidth: 400),
+        constraints: const BoxConstraints(maxHeight: 580, maxWidth: 400),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -248,13 +276,23 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
                 const Icon(Icons.emoji_events_rounded, color: AppColors.accent, size: 22),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    'Tournament Switcher',
-                    style: GoogleFonts.outfit(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        isScopedScorer ? 'Allowed Tournaments' : 'Tournament Switcher',
+                        style: GoogleFonts.outfit(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      if (isScopedScorer)
+                        Text(
+                          '${scorableTournaments.length} tournament${scorableTournaments.length == 1 ? "" : "s"} authorized for your session',
+                          style: GoogleFonts.outfit(fontSize: 10, color: AppColors.accentCyan),
+                        ),
+                    ],
                   ),
                 ),
                 IconButton(
@@ -266,6 +304,30 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
               ],
             ),
             const SizedBox(height: 12),
+
+            // Single Tournament Active / Locked Banner
+            if (isScopedScorer && scorableTournaments.length == 1)
+              Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.lock_outline_rounded, size: 14, color: AppColors.accent),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Scoped strictly to unlocked tournament: ${scorableTournaments.first.shortName}',
+                        style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.accent),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
 
             // Search Bar
             TextField(
@@ -286,9 +348,10 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
 
             // Tournaments List
             Expanded(
-              child: tournamentsAsync.when(
-                data: (tournaments) {
-                  final filtered = tournaments.where((t) {
+              child: allTournamentsAsync.when(
+                data: (allTournaments) {
+                  final listToFilter = isScopedScorer ? scorableTournaments : allTournaments;
+                  final filtered = listToFilter.where((t) {
                     if (_searchQuery.isEmpty) return true;
                     return t.name.toLowerCase().contains(_searchQuery) ||
                         t.shortName.toLowerCase().contains(_searchQuery) ||
@@ -297,9 +360,20 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
 
                   if (filtered.isEmpty) {
                     return Center(
-                      child: Text(
-                        'No tournaments found',
-                        style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 13),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.lock_clock_outlined, size: 36, color: AppColors.textMuted),
+                            const SizedBox(height: 8),
+                            Text(
+                              isScopedScorer ? 'No authorized tournaments unlocked' : 'No tournaments found',
+                              style: GoogleFonts.outfit(color: AppColors.textMuted, fontSize: 13),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   }
@@ -414,24 +488,74 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
             ),
             const SizedBox(height: 12),
 
-            // "+ Create Tournament" Button
-            SizedBox(
-              width: double.infinity,
-              height: 44,
-              child: OutlinedButton.icon(
-                onPressed: _showCreateTournamentModal,
-                icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text(
-                  '+ CREATE NEW TOURNAMENT',
-                  style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold),
+            // Action Buttons based on Role
+            if (isScopedScorer)
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const ScorerPinAuthDialog(),
+                    );
+                  },
+                  icon: const Icon(Icons.pin_rounded, size: 18),
+                  label: Text(
+                    'UNLOCK ANOTHER TOURNAMENT VIA PIN',
+                    style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.accent,
+                    side: const BorderSide(color: AppColors.accent),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
                 ),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.accent,
-                  side: const BorderSide(color: AppColors.accent),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              )
+            else ...[
+              // Platform Admin / Tournament Admin gets "+ CREATE NEW TOURNAMENT"
+              if (currentUser.isAdmin)
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: _showCreateTournamentModal,
+                    icon: const Icon(Icons.add_rounded, size: 18),
+                    label: Text(
+                      '+ CREATE NEW TOURNAMENT',
+                      style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                      side: const BorderSide(color: AppColors.accent),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
+                )
+              else
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => const ScorerPinAuthDialog(),
+                      );
+                    },
+                    icon: const Icon(Icons.pin_rounded, size: 18),
+                    label: Text(
+                      'GROUND SCORER PIN ACCESS',
+                      style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accent,
+                      side: const BorderSide(color: AppColors.accent),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                  ),
                 ),
-              ),
-            ),
+            ],
           ],
         ),
       ),

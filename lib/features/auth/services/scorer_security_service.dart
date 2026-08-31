@@ -62,7 +62,8 @@ class ScorerSecurityService {
   static const int maxFailedAttempts = 5;
   static const Duration lockoutDuration = Duration(minutes: 5);
 
-  static const String _keyUnlockedIds = 'unlocked_tournament_ids';
+  static const String _keyUnlockedIds = 'scorer_unlocked_tournaments';
+  static const String _legacyKeyUnlockedIds = 'unlocked_tournament_ids';
   static String _keyFailedAttempts(String tournamentId) => 'scorer_failed_attempts_$tournamentId';
   static String _keyLockoutExpiry(String tournamentId) => 'scorer_lockout_expiry_$tournamentId';
 
@@ -82,7 +83,9 @@ class ScorerSecurityService {
   /// Get set of tournament IDs explicitly unlocked on this device
   Future<Set<String>> getUnlockedTournamentIds() async {
     final prefs = await _getPrefs();
-    final list = prefs.getStringList(_keyUnlockedIds) ?? [];
+    final list = prefs.getStringList(_keyUnlockedIds) ??
+        prefs.getStringList(_legacyKeyUnlockedIds) ??
+        [];
     return list.toSet();
   }
 
@@ -92,7 +95,7 @@ class ScorerSecurityService {
     return set.contains(tournamentId);
   }
 
-  /// Store tournament as unlocked
+  /// Store tournament as unlocked without overwriting previously unlocked ones
   Future<void> unlockTournament(String tournamentId) async {
     final prefs = await _getPrefs();
     final set = await getUnlockedTournamentIds();
@@ -112,6 +115,7 @@ class ScorerSecurityService {
   Future<void> clearAllUnlocked() async {
     final prefs = await _getPrefs();
     await prefs.remove(_keyUnlockedIds);
+    await prefs.remove(_legacyKeyUnlockedIds);
   }
 
   // ==========================================

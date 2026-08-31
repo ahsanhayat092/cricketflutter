@@ -4,6 +4,8 @@ class BowlingScore {
   final String id;
   final String inningsId;
   final String playerId;
+  final String? matchId;
+  final String? tournamentId;
   final int balls;
   final int maidens;
   final int runs;
@@ -15,6 +17,8 @@ class BowlingScore {
     required this.id,
     required this.inningsId,
     required this.playerId,
+    this.matchId,
+    this.tournamentId,
     this.balls = 0,
     this.maidens = 0,
     this.runs = 0,
@@ -24,11 +28,13 @@ class BowlingScore {
   });
 
   /// Factory for an empty initial bowling score
-  factory BowlingScore.empty(String playerId, {String inningsId = ''}) {
+  factory BowlingScore.empty(String playerId, {String inningsId = '', String? matchId, String? tournamentId}) {
     return BowlingScore(
       id: inningsId.isNotEmpty ? '${inningsId}_$playerId' : playerId,
       inningsId: inningsId,
       playerId: playerId,
+      matchId: matchId,
+      tournamentId: tournamentId,
     );
   }
 
@@ -46,8 +52,10 @@ class BowlingScore {
     }
     return BowlingScore(
       id: id,
-      inningsId: data['inningsId'] as String? ?? '',
-      playerId: data['playerId'] as String? ?? '',
+      inningsId: (data['inningsId'] as String?) ?? (data['innings_id'] as String?) ?? '',
+      playerId: (data['playerId'] as String?) ?? (data['player_id'] as String?) ?? '',
+      matchId: (data['matchId'] as String?) ?? (data['match_id'] as String?),
+      tournamentId: (data['tournamentId'] as String?) ?? (data['tournament_id'] as String?),
       balls: (data['balls'] as num?)?.toInt() ?? 0,
       maidens: (data['maidens'] as num?)?.toInt() ?? 0,
       runs: (data['runs'] as num?)?.toInt() ?? 0,
@@ -64,6 +72,8 @@ class BowlingScore {
     return {
       'inningsId': inningsId,
       'playerId': playerId,
+      if (matchId != null && matchId!.isNotEmpty) 'matchId': matchId,
+      if (tournamentId != null && tournamentId!.isNotEmpty) 'tournamentId': tournamentId,
       'balls': balls,
       'maidens': maidens,
       'runs': runs,
@@ -79,6 +89,8 @@ class BowlingScore {
     String? id,
     String? inningsId,
     String? playerId,
+    String? matchId,
+    String? tournamentId,
     int? balls,
     int? maidens,
     int? runs,
@@ -90,6 +102,8 @@ class BowlingScore {
       id: id ?? this.id,
       inningsId: inningsId ?? this.inningsId,
       playerId: playerId ?? this.playerId,
+      matchId: matchId ?? this.matchId,
+      tournamentId: tournamentId ?? this.tournamentId,
       balls: balls ?? this.balls,
       maidens: maidens ?? this.maidens,
       runs: runs ?? this.runs,

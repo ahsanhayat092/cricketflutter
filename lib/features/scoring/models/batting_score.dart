@@ -4,6 +4,8 @@ class BattingScore {
   final String id;
   final String inningsId;
   final String playerId;
+  final String? matchId;
+  final String? tournamentId;
   final int battingOrder;
   final int runs;
   final int balls;
@@ -16,6 +18,8 @@ class BattingScore {
     required this.id,
     required this.inningsId,
     required this.playerId,
+    this.matchId,
+    this.tournamentId,
     this.battingOrder = 1,
     this.runs = 0,
     this.balls = 0,
@@ -37,14 +41,16 @@ class BattingScore {
     }
     return BattingScore(
       id: id,
-      inningsId: data['inningsId'] as String? ?? '',
-      playerId: data['playerId'] as String? ?? '',
-      battingOrder: (data['battingOrder'] as num?)?.toInt() ?? 1,
+      inningsId: (data['inningsId'] as String?) ?? (data['innings_id'] as String?) ?? '',
+      playerId: (data['playerId'] as String?) ?? (data['player_id'] as String?) ?? '',
+      matchId: (data['matchId'] as String?) ?? (data['match_id'] as String?),
+      tournamentId: (data['tournamentId'] as String?) ?? (data['tournament_id'] as String?),
+      battingOrder: (data['battingOrder'] as num?)?.toInt() ?? (data['batting_order'] as num?)?.toInt() ?? 1,
       runs: (data['runs'] as num?)?.toInt() ?? 0,
       balls: (data['balls'] as num?)?.toInt() ?? 0,
       fours: (data['fours'] as num?)?.toInt() ?? 0,
       sixes: (data['sixes'] as num?)?.toInt() ?? 0,
-      isOut: data['isOut'] as bool? ?? false,
+      isOut: data['isOut'] as bool? ?? data['is_out'] as bool? ?? false,
       dismissal: data['dismissal'] as String?,
     );
   }
@@ -56,6 +62,8 @@ class BattingScore {
     return {
       'inningsId': inningsId,
       'playerId': playerId,
+      if (matchId != null && matchId!.isNotEmpty) 'matchId': matchId,
+      if (tournamentId != null && tournamentId!.isNotEmpty) 'tournamentId': tournamentId,
       'battingOrder': battingOrder,
       'runs': runs,
       'balls': balls,
@@ -72,6 +80,8 @@ class BattingScore {
     String? id,
     String? inningsId,
     String? playerId,
+    String? matchId,
+    String? tournamentId,
     int? battingOrder,
     int? runs,
     int? balls,
@@ -84,6 +94,8 @@ class BattingScore {
       id: id ?? this.id,
       inningsId: inningsId ?? this.inningsId,
       playerId: playerId ?? this.playerId,
+      matchId: matchId ?? this.matchId,
+      tournamentId: tournamentId ?? this.tournamentId,
       battingOrder: battingOrder ?? this.battingOrder,
       runs: runs ?? this.runs,
       balls: balls ?? this.balls,

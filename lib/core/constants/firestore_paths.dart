@@ -12,15 +12,21 @@ class FirestorePaths {
   static const String standings = 'standings';
   static const String users = 'users';
   static const String tournamentMembers = 'tournamentMembers';
+  static const String tournamentTeamMemberships = 'tournamentTeamMemberships';
 
-  static String tournament(String id) => '$tournaments/$id';
-  static String team(String id) => '$teams/$id';
-  static String player(String id) => '$players/$id';
-  static String match(String id) => '$matches/$id';
-  static String inning(String id) => '$innings/$id';
-  static String battingScore(String id) => '$battingScores/$id';
-  static String bowlingScore(String id) => '$bowlingScores/$id';
-  static String standing(String teamId) => '$standings/$teamId';
-  static String user(String uid) => '$users/$uid';
-  static String tournamentMember(String id) => '$tournamentMembers/$id';
+  static String sanitizeId(String? id, [String fallback = 'unknown']) {
+    final clean = (id ?? '').trim();
+    return clean.isNotEmpty ? clean : fallback;
+  }
+
+  static String tournament(String id) => '$tournaments/${sanitizeId(id, tournamentMainId)}';
+  static String team(String id) => '$teams/${sanitizeId(id)}';
+  static String player(String id) => '$players/${sanitizeId(id)}';
+  static String match(String id) => '$matches/${sanitizeId(id)}';
+  static String inning(String id) => '$innings/${sanitizeId(id)}';
+  static String battingScore(String id) => '$battingScores/${sanitizeId(id)}';
+  static String bowlingScore(String id) => '$bowlingScores/${sanitizeId(id)}';
+  static String standing(String teamId) => '$standings/${sanitizeId(teamId)}';
+  static String user(String uid) => '$users/${sanitizeId(uid)}';
+  static String tournamentMember(String id) => '$tournamentMembers/${sanitizeId(id)}';
 }

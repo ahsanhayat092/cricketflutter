@@ -5,10 +5,12 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/pitchpe_logo.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../scoring/models/match_model.dart';
 import '../../scoring/models/team_model.dart';
 import '../../scoring/models/innings_model.dart';
+import '../../scoring/models/tournament_model.dart';
 import '../../live_viewer/presentation/live_match_screen.dart';
 import '../../live_viewer/presentation/match_scorecard_screen.dart';
 import '../providers/tournament_providers.dart';
@@ -16,6 +18,7 @@ import 'match_lineup_screen.dart';
 import 'tournament_discovery_dialog.dart';
 import 'tournament_permissions_screen.dart';
 import '../../auth/presentation/scorer_pin_auth_dialog.dart';
+import '../../scoring/presentation/widgets/scoring_sync_badge.dart';
 
 class FixturesScreen extends ConsumerStatefulWidget {
   const FixturesScreen({super.key});
@@ -72,11 +75,17 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
 
     final tournament = activeTournamentAsync.value;
     final tournamentTitle = tournament?.shortName ?? 'WPL 2026';
+    final canManage = ref.watch(isTournamentAdminProvider(activeId));
 
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        titleSpacing: 12,
+        titleSpacing: 8,
+        leadingWidth: 44,
+        leading: const Padding(
+          padding: EdgeInsets.only(left: 12),
+          child: Center(child: PitchPeLogo.icon(height: 28)),
+        ),
         title: InkWell(
           onTap: () {
             showDialog(
@@ -115,6 +124,11 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
           ),
         ),
         actions: [
+          // Offline / Online Sync Status Badge
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 2),
+            child: ScoringSyncBadge(compact: true),
+          ),
           // Ground Scorer PIN Access
           IconButton(
             icon: Icon(
@@ -122,6 +136,7 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
               color: canScore ? AppColors.accent : AppColors.textMuted,
             ),
             tooltip: 'Ground Scorer PIN',
+            visualDensity: VisualDensity.compact,
             onPressed: () {
               showDialog(
                 context: context,
@@ -132,17 +147,18 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
               );
             },
           ),
-          // People & Permissions (RBAC)
-          IconButton(
-            icon: const Icon(Icons.shield_outlined, color: AppColors.accentCyan),
-            tooltip: 'People & Permissions',
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const TournamentPermissionsScreen()),
-              );
-            },
-          ),
+          // People & Permissions (RBAC) - Strictly for Tournament Admins / Owners / Platform Admin
+          if (canManage)
+            IconButton(
+              icon: const Icon(Icons.shield_outlined, color: AppColors.accentCyan),
+              tooltip: 'People & Permissions',
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const TournamentPermissionsScreen()),
+                );
+              },
+            ),
           // WhatsApp Share Tournament
           IconButton(
             icon: const Icon(Icons.share_rounded, color: AppColors.accent),
@@ -269,14 +285,25 @@ class _MatchCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final activeId = ref.watch(activeTournamentIdProvider);
+    final matchTourId = match.tournamentId.isNotEmpty ? match.tournamentId : activeId;
+    final isMatchScorable = ref.watch(isTournamentScorableProvider(matchTourId));
+
     final inningsAsync = ref.watch(matchInningsProvider(match.id));
     final inningsList = inningsAsync.value ?? [];
 
     final inn1 = inningsList.isNotEmpty ? inningsList.firstWhere((i) => i.inningsNumber == 1, orElse: () => inningsList.first) : null;
     final inn2 = inningsList.length > 1 ? inningsList.firstWhere((i) => i.inningsNumber == 2, orElse: () => inningsList.last) : null;
 
-    final isWinnerA = match.winningTeamId == teamA.id;
-    final isWinnerB = match.winningTeamId == teamB.id;
+    final resolvedTeamA = teamA.name.isNotEmpty && !teamA.name.startsWith('Team ')
+        ? teamA
+        : (ref.watch(singleTeamStreamProvider(match.teamAId)).value ?? teamA);
+    final resolvedTeamB = teamB.name.isNotEmpty && !teamB.name.startsWith('Team ')
+        ? teamB
+        : (ref.watch(singleTeamStreamProvider(match.teamBId)).value ?? teamB);
+
+    final isWinnerA = match.winningTeamId == resolvedTeamA.id;
+    final isWinnerB = match.winningTeamId == resolvedTeamB.id;
 
     return Container(
       decoration: BoxDecoration(
@@ -301,22 +328,34 @@ class _MatchCard extends ConsumerWidget {
         borderRadius: BorderRadius.circular(16),
         child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          onTap: () {
+          onTap: () async {
             if (match.isUpcoming) {
-              if (canScore) {
+              if (isMatchScorable) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => MatchLineupScreen(match: match)),
                 );
               } else {
-                final tournament = ref.read(activeTournamentProvider).value;
-                showDialog(
+                final allTournamentsAsync = ref.read(allTournamentsProvider);
+                final tournament = allTournamentsAsync.value?.cast<TournamentModel?>().firstWhere(
+                      (t) => t?.id == matchTourId,
+                      orElse: () => ref.read(activeTournamentProvider).value,
+                    ) ?? ref.read(activeTournamentProvider).value;
+                final tourName = tournament?.name ?? 'this tournament';
+                final result = await showDialog<bool>(
                   context: context,
                   builder: (_) => ScorerPinAuthDialog(
-                    initialTournamentId: match.tournamentId.isNotEmpty ? match.tournamentId : 'main',
-                    initialTournamentName: tournament?.name ?? 'Tournament',
+                    initialTournamentId: matchTourId,
+                    initialTournamentName: tournament?.name,
+                    customPrompt: 'Enter the 4-digit Scorer PIN for $tourName to unlock this live scoring console.',
                   ),
                 );
+                if (result == true && context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => MatchLineupScreen(match: match)),
+                  );
+                }
               }
             } else if (match.isCompleted) {
               Navigator.push(
@@ -352,10 +391,10 @@ class _MatchCard extends ConsumerWidget {
                         IconButton(
                           onPressed: () {
                             final tournament = ref.read(activeTournamentProvider).value;
-                            final tournamentName = tournament?.name ?? 'WASA Cricket';
+                            final tournamentName = tournament?.name ?? 'PitchPe';
                             final shareUrl = tournament?.shareUrl ?? 'https://wasacricket.vercel.app';
                             final message = '🏏 *$tournamentName - Match #${match.matchNumber}*\n'
-                                '⚔️ *${teamA.name}* vs *${teamB.name}*\n'
+                                '⚔️ *${resolvedTeamA.name}* vs *${resolvedTeamB.name}*\n'
                                 '${match.resultText ?? (match.isLive ? "🔴 Live Match in Progress" : "📅 Scheduled on ${match.date} ${match.time}")}\n\n'
                                 '📊 View Live Scorecard: $shareUrl';
                             final text = Uri.encodeComponent(message);
@@ -376,8 +415,8 @@ class _MatchCard extends ConsumerWidget {
 
                 // 2. Team A Row
                 _buildTeamRow(
-                  team: teamA,
-                  inn: inn1?.battingTeamId == teamA.id ? inn1 : (inn2?.battingTeamId == teamA.id ? inn2 : null),
+                  team: resolvedTeamA,
+                  inn: inn1?.battingTeamId == resolvedTeamA.id ? inn1 : (inn2?.battingTeamId == resolvedTeamA.id ? inn2 : null),
                   isWinner: isWinnerA,
                   match: match,
                 ),
@@ -385,8 +424,8 @@ class _MatchCard extends ConsumerWidget {
 
                 // 3. Team B Row
                 _buildTeamRow(
-                  team: teamB,
-                  inn: inn1?.battingTeamId == teamB.id ? inn1 : (inn2?.battingTeamId == teamB.id ? inn2 : null),
+                  team: resolvedTeamB,
+                  inn: inn1?.battingTeamId == resolvedTeamB.id ? inn1 : (inn2?.battingTeamId == resolvedTeamB.id ? inn2 : null),
                   isWinner: isWinnerB,
                   match: match,
                 ),
@@ -430,7 +469,7 @@ class _MatchCard extends ConsumerWidget {
                     Row(
                       children: [
                         Text(
-                          match.isUpcoming && canScore
+                          match.isUpcoming && isMatchScorable
                               ? 'Setup Lineup'
                               : (match.isCompleted ? 'View Scorecard' : 'Live Score'),
                           style: GoogleFonts.outfit(

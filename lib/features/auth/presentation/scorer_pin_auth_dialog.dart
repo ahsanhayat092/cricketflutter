@@ -6,17 +6,18 @@ import 'package:google_fonts/google_fonts.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../scoring/models/tournament_model.dart';
 import '../../match_management/providers/tournament_providers.dart';
-import '../services/scorer_security_service.dart';
 import 'login_screen.dart';
 
 class ScorerPinAuthDialog extends ConsumerStatefulWidget {
   final String? initialTournamentId;
   final String? initialTournamentName;
+  final String? customPrompt;
 
   const ScorerPinAuthDialog({
     super.key,
     this.initialTournamentId,
     this.initialTournamentName,
+    this.customPrompt,
   });
 
   @override
@@ -276,10 +277,11 @@ class _ScorerPinAuthDialogState extends ConsumerState<ScorerPinAuthDialog> {
                 Text(
                   _isLockedOut
                       ? 'Too many incorrect attempts. Please wait for the lockout countdown.'
-                      : 'Enter the 4-digit Scorer PIN for ${selectedTournament.shortName}.',
+                      : (widget.customPrompt ??
+                          'Enter the 4-digit Scorer PIN for ${selectedTournament.name} to unlock this live scoring console.'),
                   textAlign: TextAlign.center,
                   style: GoogleFonts.outfit(
-                    fontSize: 11,
+                    fontSize: 12,
                     color: _isLockedOut ? AppColors.wicket : AppColors.textMuted,
                   ),
                 ),

@@ -10,6 +10,7 @@ import '../../scoring/models/tournament_model.dart';
 import '../../scoring/models/innings_model.dart';
 import '../../scoring/models/batting_score.dart';
 import '../../scoring/models/bowling_score.dart';
+import '../../auth/models/app_user.dart';
 import '../../auth/models/tournament_member_model.dart';
 import '../../auth/services/scorer_security_service.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -193,16 +194,102 @@ final userTournamentMembershipsProvider = StreamProvider.family<List<TournamentM
   return service.getUserMembershipsStream(userEmail);
 });
 
+/// Helper to scope tournaments strictly to assigned, owned, or PIN-unlocked tournaments
+List<TournamentModel> getUserScorerTournaments({
+  required List<TournamentModel> allTournaments,
+  required AppUser user,
+  required List<TournamentMemberModel> memberships,
+  required Set<String> pinUnlockedTournamentIds,
+}) {
+  if (user.isPlatformAdmin) return allTournaments;
+
+  final cleanEmail = user.email.toLowerCase().trim();
+  final allowedMemberTournamentIds = memberships
+      .where((m) => m.canScore)
+      .map((m) => m.tournamentId)
+      .toSet();
+
+  return allTournaments.where((t) {
+    // 1. Unlocked via 4-digit PIN in session / storage
+    if (pinUnlockedTournamentIds.contains(t.id)) return true;
+
+    // 2. Tournament Creator / Owner by ID or Email
+    if (user.uid.isNotEmpty && user.uid != 'guest' && t.ownerId != null && t.ownerId == user.uid) {
+      return true;
+    }
+    if (cleanEmail.isNotEmpty && t.ownerEmail != null && t.ownerEmail!.toLowerCase().trim() == cleanEmail) {
+      return true;
+    }
+
+    // 3. Explicitly assigned membership (OWNER, ADMIN, SCORER)
+    if (allowedMemberTournamentIds.contains(t.id)) {
+      return true;
+    }
+
+    return false;
+  }).toList();
+}
+
+/// Evaluates whether current user has tournament administration access (Owner, Co-Admin, Platform Admin)
+final isTournamentAdminProvider = Provider.family<bool, String>((ref, tournamentId) {
+  final currentUser = ref.watch(currentUserProvider);
+  if (currentUser.isPlatformAdmin) return true;
+
+  final allTournamentsAsync = ref.watch(allTournamentsProvider);
+  final allTournaments = allTournamentsAsync.value ?? [];
+  final tournament = allTournaments.cast<TournamentModel?>().firstWhere(
+        (t) => t?.id == tournamentId,
+        orElse: () => null,
+      );
+
+  final cleanEmail = currentUser.email.toLowerCase().trim();
+  if (tournament != null) {
+    if (currentUser.uid.isNotEmpty && currentUser.uid != 'guest' && tournament.ownerId != null && tournament.ownerId == currentUser.uid) {
+      return true;
+    }
+    if (cleanEmail.isNotEmpty && tournament.ownerEmail != null && tournament.ownerEmail!.toLowerCase().trim() == cleanEmail) {
+      return true;
+    }
+  }
+
+  if (cleanEmail.isNotEmpty) {
+    final membershipsAsync = ref.watch(userTournamentMembershipsProvider(cleanEmail));
+    final memberships = membershipsAsync.value ?? [];
+    if (memberships.any((m) => m.tournamentId == tournamentId && m.canManage)) {
+      return true;
+    }
+  }
+
+  return false;
+});
+
 /// Evaluates whether current user has live scoring access for a specific tournament
 final isTournamentScorableProvider = Provider.family<bool, String>((ref, tournamentId) {
   final currentUser = ref.watch(currentUserProvider);
-  if (currentUser.isAdmin) return true;
+  if (currentUser.isPlatformAdmin) return true;
 
   final unlockedSet = ref.watch(unlockedTournamentsProvider);
   if (unlockedSet.contains(tournamentId)) return true;
 
-  if (currentUser.email.isNotEmpty) {
-    final membershipsAsync = ref.watch(userTournamentMembershipsProvider(currentUser.email));
+  final allTournamentsAsync = ref.watch(allTournamentsProvider);
+  final allTournaments = allTournamentsAsync.value ?? [];
+  final tournament = allTournaments.cast<TournamentModel?>().firstWhere(
+        (t) => t?.id == tournamentId,
+        orElse: () => null,
+      );
+
+  final cleanEmail = currentUser.email.toLowerCase().trim();
+  if (tournament != null) {
+    if (currentUser.uid.isNotEmpty && currentUser.uid != 'guest' && tournament.ownerId != null && tournament.ownerId == currentUser.uid) {
+      return true;
+    }
+    if (cleanEmail.isNotEmpty && tournament.ownerEmail != null && tournament.ownerEmail!.toLowerCase().trim() == cleanEmail) {
+      return true;
+    }
+  }
+
+  if (cleanEmail.isNotEmpty) {
+    final membershipsAsync = ref.watch(userTournamentMembershipsProvider(cleanEmail));
     final memberships = membershipsAsync.value ?? [];
     if (memberships.any((m) => m.tournamentId == tournamentId && m.canScore)) {
       return true;
@@ -217,24 +304,42 @@ final scorableTournamentsProvider = Provider<List<TournamentModel>>((ref) {
   final allTournamentsAsync = ref.watch(allTournamentsProvider);
   final allTournaments = allTournamentsAsync.value ?? [];
   final currentUser = ref.watch(currentUserProvider);
-
-  if (currentUser.isAdmin) return allTournaments;
-
   final unlockedSet = ref.watch(unlockedTournamentsProvider);
-  final membershipsAsync = currentUser.email.isNotEmpty
-      ? ref.watch(userTournamentMembershipsProvider(currentUser.email))
+  final cleanEmail = currentUser.email.toLowerCase().trim();
+
+  final membershipsAsync = cleanEmail.isNotEmpty
+      ? ref.watch(userTournamentMembershipsProvider(cleanEmail))
       : const AsyncValue.data(<TournamentMemberModel>[]);
   final memberships = membershipsAsync.value ?? [];
-  final memberTournamentIds = memberships.where((m) => m.canScore).map((m) => m.tournamentId).toSet();
 
-  return allTournaments.where((t) => unlockedSet.contains(t.id) || memberTournamentIds.contains(t.id)).toList();
+  return getUserScorerTournaments(
+    allTournaments: allTournaments,
+    user: currentUser,
+    memberships: memberships,
+    pinUnlockedTournamentIds: unlockedSet,
+  );
+});
+
+/// Realtime Teams Stream parameterized by Tournament ID
+final tournamentTeamsProvider = StreamProvider.family<List<TeamModel>, String>((ref, tournamentId) {
+  final service = ref.watch(scoringServiceProvider);
+  final activeId = ref.watch(activeTournamentIdProvider);
+  final targetId = tournamentId.isNotEmpty ? tournamentId : activeId;
+  return service.getTeamsStream(tournamentId: targetId);
 });
 
 /// Realtime Teams Stream for Active Tournament (/teams where tournamentId == activeId)
 final teamsProvider = StreamProvider<List<TeamModel>>((ref) {
-  final service = ref.watch(scoringServiceProvider);
   final activeId = ref.watch(activeTournamentIdProvider);
+  final service = ref.watch(scoringServiceProvider);
   return service.getTeamsStream(tournamentId: activeId);
+});
+
+/// Realtime Single Team Stream directly from /teams/{teamId} (Direct Fetch Fallback)
+final singleTeamStreamProvider = StreamProvider.family<TeamModel?, String>((ref, teamId) {
+  if (teamId.isEmpty) return Stream.value(null);
+  final service = ref.watch(scoringServiceProvider);
+  return service.getTeamStream(teamId);
 });
 
 /// Realtime Players Stream from Firestore (/players)
@@ -268,7 +373,6 @@ final singleMatchProvider = StreamProvider.family<MatchModel?, String>((ref, mat
   final standings = standingsAsync.value ?? [];
 
   return service.getMatchStream(matchId).map((match) {
-    if (match == null) return null;
     return hydrateMatchWithStandings(match, standings);
   });
 });
@@ -297,13 +401,14 @@ final playersByTeamProvider = Provider.family<List<PlayerModel>, String>((ref, t
   return playersAsync.value ?? [];
 });
 
-// Helper to get team by ID
+// Helper to get team by ID (with fallback to direct stream)
 final teamByIdProvider = Provider.family<TeamModel?, String>((ref, teamId) {
   final teamsAsync = ref.watch(teamsProvider);
   final allTeams = teamsAsync.value ?? [];
   try {
     return allTeams.firstWhere((t) => t.id == teamId);
   } catch (_) {
-    return null;
+    final direct = ref.watch(singleTeamStreamProvider(teamId)).value;
+    return direct;
   }
 });

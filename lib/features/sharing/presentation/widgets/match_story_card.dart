@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../core/widgets/pitchpe_logo.dart';
 import '../../../../core/utils/image_url_helper.dart';
 import '../../../scoring/models/match_model.dart';
 import '../../../scoring/models/team_model.dart';
@@ -949,22 +950,9 @@ class MatchStoryCard extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.sports_cricket_rounded, color: AppColors.accent, size: 14),
-                const SizedBox(width: 6),
-                Text(
-                  'WASA Cricket App',
-                  style: GoogleFonts.outfit(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
+            const PitchPeLogo(height: 22, theme: PitchPeLogoTheme.dark),
             Text(
-              '#WPL2026 • Live Match',
+              '#PitchPe • Live Match',
               style: GoogleFonts.outfit(
                 fontSize: 11,
                 fontWeight: FontWeight.w800,

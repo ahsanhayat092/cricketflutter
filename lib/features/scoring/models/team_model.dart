@@ -41,13 +41,36 @@ class TeamModel {
     if (data == null) {
       return TeamModel(id: id, name: 'Team $id', shortName: id.toUpperCase());
     }
+
+    final rawName = (data['name'] as String?)?.trim() ??
+                    (data['teamName'] as String?)?.trim() ??
+                    (data['team_name'] as String?)?.trim() ??
+                    (data['title'] as String?)?.trim() ??
+                    '';
+    final resolvedName = rawName.isNotEmpty ? rawName : (id.isNotEmpty ? 'Team $id' : 'Team');
+
+    final rawShortName = (data['shortName'] as String?)?.trim() ??
+                         (data['teamShortName'] as String?)?.trim() ??
+                         (data['team_short_name'] as String?)?.trim() ??
+                         (data['code'] as String?)?.trim() ??
+                         '';
+    final resolvedShortName = rawShortName.isNotEmpty
+        ? rawShortName
+        : (resolvedName.length <= 4 ? resolvedName.toUpperCase() : resolvedName.substring(0, resolvedName.length.clamp(1, 3)).toUpperCase());
+
+    final rawLogo = (data['logoUrl'] as String?)?.trim() ??
+                    (data['teamLogoUrl'] as String?)?.trim() ??
+                    (data['logo'] as String?)?.trim() ??
+                    (data['team_logo_url'] as String?)?.trim() ??
+                    '';
+
     return TeamModel(
       id: id,
-      tournamentId: data['tournamentId'] as String? ?? 'main',
-      name: data['name'] as String? ?? '',
-      shortName: data['shortName'] as String? ?? '',
-      groupName: data['groupName'] as String? ?? 'A',
-      logoUrl: ImageUrlHelper.formatDirectImageUrl(data['logoUrl'] as String? ?? ''),
+      tournamentId: (data['tournamentId'] as String?) ?? (data['tournament_id'] as String?) ?? 'main',
+      name: resolvedName,
+      shortName: resolvedShortName,
+      groupName: (data['groupName'] as String?) ?? (data['group_name'] as String?) ?? 'A',
+      logoUrl: ImageUrlHelper.formatDirectImageUrl(rawLogo),
       primaryColor: data['primaryColor'] as String?,
       secondaryColor: data['secondaryColor'] as String?,
       createdAt: data['createdAt'] as String?,

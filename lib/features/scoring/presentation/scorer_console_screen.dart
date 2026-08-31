@@ -6,26 +6,30 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/pitchpe_logo.dart';
 import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/cricket_calculator.dart';
 import '../../../core/utils/image_url_helper.dart';
 import '../../../core/utils/dismissal_helper.dart';
-import '../../auth/providers/auth_provider.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../models/ball_event.dart';
 import '../models/player_model.dart';
 import '../models/innings_model.dart';
 import '../models/match_model.dart';
 import '../models/team_model.dart';
+import '../models/tournament_model.dart';
 import '../models/batting_score.dart';
 import '../models/bowling_score.dart';
 import '../providers/scoring_controller.dart';
+import '../engine/cricket_scoring_engine.dart';
 import '../../match_management/providers/tournament_providers.dart';
 import 'wicket_dialog.dart';
 import 'bowler_select_dialog.dart';
 import 'no_ball_dialog.dart';
 import 'opening_players_dialog.dart';
 import 'mid_match_correction_dialog.dart';
+import '../../auth/presentation/scorer_pin_auth_dialog.dart';
+import 'widgets/scoring_sync_badge.dart';
 
 class ScorerConsoleScreen extends ConsumerStatefulWidget {
   final String matchId;
@@ -257,9 +261,32 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
   ) async {
     final currentState = ref.read(liveScoringControllerProvider(widget.matchId));
     final isMidOver = currentState.innings.balls > 0 && (currentState.innings.balls % 6 != 0);
+    final currentBowlerScore = currentState.currentBowlerId != null ? currentState.bowlingScores[currentState.currentBowlerId!] : null;
+    final matchDoc = ref.read(singleMatchProvider(widget.matchId)).value;
+    final activeId = ref.read(activeTournamentIdProvider);
+    final matchTourId = matchDoc?.tournamentId.isNotEmpty == true ? matchDoc!.tournamentId : activeId;
+    final tournament = ref.read(allTournamentsProvider).value?.cast<TournamentModel?>().firstWhere(
+          (t) => t?.id == matchTourId,
+          orElse: () => ref.read(activeTournamentProvider).value,
+        ) ?? ref.read(activeTournamentProvider).value;
 
-    // Guard: Bowler cannot be changed mid-over once an over is underway
-    if (isMidOver && currentState.currentBowlerId != null) {
+    final effectiveMaxOverPerBowler = (matchDoc?.rules.maxOverPerBowler != null && matchDoc!.rules.maxOverPerBowler > 0)
+        ? matchDoc.rules.maxOverPerBowler
+        : (tournament?.maxOverPerBowler ?? 1);
+
+    final isCurrentBowlerExhausted = currentState.currentBowlerId != null &&
+        CricketScoringEngine.isBowlerQuotaExhausted(
+          bowlerId: currentState.currentBowlerId!,
+          stage: isFinalMatch ? MatchStage.finalMatch : MatchStage.league,
+          bowlingScores: currentState.bowlingScores.values.toList(),
+          maxOverPerBowler: effectiveMaxOverPerBowler,
+        );
+
+    // Guard: Bowler cannot be changed mid-over once an over is underway UNLESS bowler is unassigned or quota-exhausted
+    if (isMidOver &&
+        currentState.currentBowlerId != null &&
+        !currentState.isNeedBowlerSelection &&
+        !isCurrentBowlerExhausted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Bowler cannot be changed mid-over. Complete all 6 legal balls first.'),
@@ -282,6 +309,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           bowlingSquad: bowlingSquad,
           previousBowlerId: previousBowlerId,
           isFinalMatch: isFinalMatch,
+          maxOverPerBowler: effectiveMaxOverPerBowler,
           bowlingScores: state.bowlingScores,
         ),
       );
@@ -298,10 +326,21 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(currentUserProvider);
+    final matchAsync = ref.watch(singleMatchProvider(widget.matchId));
+    final matchDoc = matchAsync.value;
+    final activeId = ref.watch(activeTournamentIdProvider);
+    final matchTourId = matchDoc?.tournamentId.isNotEmpty == true ? matchDoc!.tournamentId : activeId;
+    final isAuthorized = ref.watch(isTournamentScorableProvider(matchTourId));
 
-    // Security check: Only official scorer or tournament admin can score
-    if (!user.canScore) {
+    // Security check: Only official scorer, tournament admin, or PIN-unlocked user can score
+    if (!isAuthorized) {
+      final allTournamentsAsync = ref.watch(allTournamentsProvider);
+      final tournament = allTournamentsAsync.value?.cast<TournamentModel?>().firstWhere(
+            (t) => t?.id == matchTourId,
+            orElse: () => ref.watch(activeTournamentProvider).value,
+          ) ?? ref.watch(activeTournamentProvider).value;
+      final tourName = tournament?.name ?? 'this tournament';
+
       return Scaffold(
         appBar: AppBar(
           title: Text(
@@ -310,28 +349,17 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           ),
         ),
         body: Center(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(28.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: AppColors.wicket.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.wicket, width: 2),
-                  ),
-                  child: const Icon(
-                    Icons.lock_rounded,
-                    size: 40,
-                    color: AppColors.wicket,
-                  ),
+                const Center(
+                  child: PitchPeLogo.appIcon(height: 64),
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Scorer Login Required',
+                  'Scorer Access Required',
                   style: GoogleFonts.outfit(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -340,7 +368,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Only registered match officials and scorers can input ball-by-ball deliveries. Public viewers can watch live scores from the Live Match screen.',
+                  'Enter the 4-digit Scorer PIN for $tourName or sign in with an official scorer account assigned to this tournament.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.outfit(
                     fontSize: 13,
@@ -348,25 +376,57 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                     height: 1.4,
                   ),
                 ),
-                const SizedBox(height: 28),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 24),
+                // 1. Official Account Login (Primary Mandatory Action)
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.login_rounded, size: 20),
+                    label: Text(
+                      'LOG IN TO SCORE MATCH',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 13),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      );
+                    },
                   ),
-                  icon: const Icon(Icons.login_rounded),
-                  label: Text(
-                    'SIGN IN AS SCORER',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 12),
+                // 2. PIN Unlock Button (Secondary)
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accentCyan,
+                      side: const BorderSide(color: AppColors.accentCyan),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.pin_rounded, size: 18),
+                    label: Text(
+                      'UNLOCK WITH 4-DIGIT SCORER PIN',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => ScorerPinAuthDialog(
+                          initialTournamentId: matchTourId,
+                          initialTournamentName: tournament?.name,
+                          customPrompt: 'Enter the 4-digit Scorer PIN for $tourName to unlock this live scoring console.',
+                        ),
+                      );
+                    },
                   ),
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    );
-                  },
                 ),
                 const SizedBox(height: 12),
                 TextButton(
@@ -374,7 +434,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                   child: Text(
                     'Return to Live Match View',
                     style: GoogleFonts.outfit(
-                      color: AppColors.accentCyan,
+                      color: AppColors.textMuted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -425,17 +485,21 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     // Helper map of players
     final playerMap = {for (var p in allPlayers) p.id: p};
 
-    final allTeams = ref.watch(teamsProvider).value ?? [];
+    final allTeams = ref.watch(tournamentTeamsProvider(matchTourId)).value ?? ref.watch(teamsProvider).value ?? [];
     final teamMap = {for (var t in allTeams) t.id: t};
 
     final teamA = teamMap[match.teamAId] ??
+        ref.watch(singleTeamStreamProvider(match.teamAId)).value ??
         TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
     final teamB = teamMap[match.teamBId] ??
+        ref.watch(singleTeamStreamProvider(match.teamBId)).value ??
         TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
 
     final battingTeam = teamMap[innings.battingTeamId] ??
+        ref.watch(singleTeamStreamProvider(innings.battingTeamId)).value ??
         TeamModel(id: innings.battingTeamId, name: 'Batting Team', shortName: 'BAT');
     final bowlingTeam = teamMap[innings.bowlingTeamId] ??
+        ref.watch(singleTeamStreamProvider(innings.bowlingTeamId)).value ??
         TeamModel(id: innings.bowlingTeamId, name: 'Bowling Team', shortName: 'BWL');
 
     final isInningsFinished = innings.completed || match.isCompleted || scoringState.isLocked;
@@ -475,10 +539,13 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     // Check if bowler needs selection at end of over or if sync error occurs
     ref.listen<ScoringState>(liveScoringControllerProvider(widget.matchId), (prev, current) {
       final isFinished = current.isLocked || current.innings.completed || current.match.isCompleted;
+      final isOverEnd = current.innings.balls > 0 && (current.innings.balls % 6 == 0);
+      final isStartOfInnings = current.innings.balls == 0;
       final justTriggered = prev?.isNeedBowlerSelection != true && current.isNeedBowlerSelection == true;
       final bowlerBecameNull = prev?.currentBowlerId != null && current.currentBowlerId == null;
 
-      if ((justTriggered || bowlerBecameNull) && current.currentBowlerId == null && !isFinished) {
+      // Only auto-open modal if over has completed (6 balls) or start of innings (0 balls) and bowler is unassigned
+      if ((justTriggered || bowlerBecameNull) && current.currentBowlerId == null && !isFinished && (isOverEnd || isStartOfInnings)) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && !_isBowlerModalOpen) {
             _openBowlerSelectModal(bowlingSquad, current.previousBowlerId, match.isFinal);
@@ -510,35 +577,43 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Row(
+        titleSpacing: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'SCORER CONSOLE • INN ${innings.inningsNumber}',
-              style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 16),
-            ),
-            const SizedBox(width: 8),
-            if (scoringState.isSyncing)
-              const SizedBox(
-                width: 12,
-                height: 12,
-                child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accent),
-              )
-            else if (scoringState.lastSyncError != null)
-              const Tooltip(
-                message: 'Firestore Sync Error',
-                child: Icon(Icons.cloud_off_rounded, color: AppColors.wicket, size: 16),
-              )
-            else
-              const Tooltip(
-                message: 'Synced to Firebase',
-                child: Icon(Icons.cloud_done_rounded, color: AppColors.accent, size: 16),
+              'SCORER CONSOLE',
+              style: GoogleFonts.outfit(
+                fontWeight: FontWeight.w900,
+                fontSize: 13,
+                letterSpacing: 0.5,
+                color: AppColors.textPrimary,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            Text(
+              'Match #${match.matchNumber} • Inn ${innings.inningsNumber}',
+              style: GoogleFonts.outfit(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: AppColors.accentCyan,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ],
         ),
         actions: [
-          // Replace / Correct Player (Lineup & Scorecard Correction)
-          IconButton(
-            icon: const Icon(Icons.manage_accounts_rounded, color: AppColors.accent),
+          // 1. Live / Offline Sync Badge (compact)
+          const ScoringSyncBadge(compact: true),
+          const SizedBox(width: 4),
+
+          // 2. Replace / Correct Player (Lineup & Scorecard Correction)
+          _buildAppBarAction(
+            icon: Icons.manage_accounts_rounded,
+            color: AppColors.accent,
             tooltip: 'Replace / Correct Player',
             onPressed: () {
               _triggerHaptic();
@@ -554,9 +629,12 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
               );
             },
           ),
-          // Swap Striker button
-          IconButton(
-            icon: const Icon(Icons.swap_horiz, color: AppColors.accentCyan),
+          const SizedBox(width: 4),
+
+          // 3. Swap Striker button
+          _buildAppBarAction(
+            icon: Icons.swap_horiz_rounded,
+            color: AppColors.accentCyan,
             tooltip: 'Swap Strike',
             onPressed: isInningsFinished
                 ? null
@@ -565,12 +643,12 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                     ref.read(liveScoringControllerProvider(widget.matchId).notifier).swapStriker();
                   },
           ),
-          // Undo Button
-          IconButton(
-            icon: Icon(
-              Icons.undo_rounded,
-              color: scoringState.canUndo ? AppColors.gold : AppColors.textMuted,
-            ),
+          const SizedBox(width: 4),
+
+          // 4. Undo Button
+          _buildAppBarAction(
+            icon: Icons.undo_rounded,
+            color: scoringState.canUndo ? AppColors.gold : AppColors.textMuted,
             tooltip: 'Undo Last Ball',
             onPressed: scoringState.canUndo
                 ? () {
@@ -579,6 +657,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                   }
                 : null,
           ),
+          const SizedBox(width: 8),
         ],
       ),
       body: SafeArea(
@@ -643,6 +722,43 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
               playingVIIds: bowlingPlayingVIIds,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAppBarAction({
+    required IconData icon,
+    required Color color,
+    required String tooltip,
+    required VoidCallback? onPressed,
+  }) {
+    final isEnabled = onPressed != null;
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(10),
+          child: Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isEnabled ? color.withValues(alpha: 0.12) : Colors.white.withValues(alpha: 0.04),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: isEnabled ? color.withValues(alpha: 0.35) : Colors.white.withValues(alpha: 0.08),
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: 20,
+              color: isEnabled ? color : AppColors.textMuted,
+            ),
+          ),
         ),
       ),
     );
@@ -1267,7 +1383,8 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.black),
               onPressed: () async {
-                final allTeams = ref.read(teamsProvider).value ?? [];
+                final matchTourId = match.tournamentId.isNotEmpty ? match.tournamentId : ref.read(activeTournamentIdProvider);
+                final allTeams = ref.read(tournamentTeamsProvider(matchTourId)).value ?? ref.read(teamsProvider).value ?? [];
                 final teamMap = {for (var t in allTeams) t.id: t};
                 final allPlayers = ref.read(playersProvider).value ?? [];
                 final playerMap = {for (var p in allPlayers) p.id: p};
@@ -1275,9 +1392,14 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                 final nextBattingTeamId = innings.bowlingTeamId;
                 final nextBowlingTeamId = innings.battingTeamId;
 
+                final directNextBatting = await ref.read(scoringServiceProvider).getTeam(nextBattingTeamId);
+                final directNextBowling = await ref.read(scoringServiceProvider).getTeam(nextBowlingTeamId);
+
                 final nextBattingTeam = teamMap[nextBattingTeamId] ??
+                    directNextBatting ??
                     TeamModel(id: nextBattingTeamId, name: 'Batting Team', shortName: 'BAT');
                 final nextBowlingTeam = teamMap[nextBowlingTeamId] ??
+                    directNextBowling ??
                     TeamModel(id: nextBowlingTeamId, name: 'Bowling Team', shortName: 'BWL');
 
                 final nextBattingSquadIds = nextBattingTeamId == match.teamAId ? match.teamAPlayingVI : match.teamBPlayingVI;

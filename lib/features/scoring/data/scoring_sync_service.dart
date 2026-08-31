@@ -11,32 +11,29 @@ import '../models/bowling_score.dart';
 import '../../standings/models/standing.dart';
 
 class ScoringSyncService {
-  final FirebaseFirestore _firestore;
-  final FirebaseAuth _auth;
+  final FirebaseFirestore? _customFirestore;
+  final FirebaseAuth? _customAuth;
 
   ScoringSyncService({
     FirebaseFirestore? firestore,
     FirebaseAuth? auth,
-  })  : _firestore = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+  })  : _customFirestore = firestore,
+        _customAuth = auth;
 
-  /// Ensure user is authenticated before executing Firestore writes (Security Rules compliance)
+  FirebaseFirestore get _firestore => _customFirestore ?? FirebaseFirestore.instance;
+  FirebaseAuth get _auth => _customAuth ?? FirebaseAuth.instance;
+
+  /// Ensure user session is retained before executing Firestore writes
   Future<void> ensureAuthenticated() async {
-    if (_auth.currentUser == null) {
-      try {
-        debugPrint('[ScoringSyncService] No authenticated user found. Signing in anonymously...');
-        await _auth.signInAnonymously();
-        debugPrint('[ScoringSyncService] Anonymous authentication successful: ${_auth.currentUser?.uid}');
-      } catch (e) {
-        debugPrint('[ScoringSyncService] Authentication error: $e');
-        rethrow;
-      }
+    if (_auth.currentUser != null) {
+      debugPrint('[ScoringSyncService] Active authenticated session retained: ${_auth.currentUser?.email ?? _auth.currentUser?.uid}');
     }
   }
 
   /// 1. Start Match: Updates match lineup, toss, and creates 1st Innings atomically
   Future<void> startMatch({
     required String matchId,
+    String? tournamentId,
     String? teamAId,
     String? teamBId,
     required List<String> teamAPlayingVI,
@@ -55,9 +52,11 @@ class ScoringSyncService {
 
     final batch = _firestore.batch();
     final now = DateTime.now().toIso8601String();
+    final targetTournamentId = (tournamentId != null && tournamentId.isNotEmpty) ? tournamentId : 'main';
 
     // 1. Update Match
     final Map<String, dynamic> matchUpdate = {
+      'tournamentId': targetTournamentId,
       'teamAPlayingVI': teamAPlayingVI,
       'teamAReserveId': teamAReserveId,
       'teamBPlayingVI': teamBPlayingVI,
@@ -83,6 +82,7 @@ class ScoringSyncService {
     final firstInnings = InningsModel(
       id: inningsId,
       matchId: matchId,
+      tournamentId: targetTournamentId,
       inningsNumber: 1,
       battingTeamId: battingTeamId,
       bowlingTeamId: bowlingTeamId,
@@ -95,12 +95,16 @@ class ScoringSyncService {
     final s1Score = BattingScore(
       id: '${inningsId}_$strikerId',
       inningsId: inningsId,
+      matchId: matchId,
+      tournamentId: targetTournamentId,
       playerId: strikerId,
       battingOrder: 1,
     );
     final s2Score = BattingScore(
       id: '${inningsId}_$nonStrikerId',
       inningsId: inningsId,
+      matchId: matchId,
+      tournamentId: targetTournamentId,
       playerId: nonStrikerId,
       battingOrder: 2,
     );
@@ -111,6 +115,8 @@ class ScoringSyncService {
     final bScore = BowlingScore(
       id: '${inningsId}_$bowlerId',
       inningsId: inningsId,
+      matchId: matchId,
+      tournamentId: targetTournamentId,
       playerId: bowlerId,
     );
     batch.set(_firestore.doc(FirestorePaths.bowlingScore(bScore.id)), bScore.toFirestore(), SetOptions(merge: true));
@@ -130,29 +136,57 @@ class ScoringSyncService {
 
     final batch = _firestore.batch();
     final now = DateTime.now().toIso8601String();
+    final effectiveTourId = match.tournamentId.isNotEmpty
+        ? match.tournamentId
+        : (innings.tournamentId.isNotEmpty ? innings.tournamentId : 'main');
 
     // 1. Update Match (status, recentEvent, resultText, winningTeamId)
     final matchRef = _firestore.doc(FirestorePaths.match(match.id));
     final matchData = match.toFirestore();
     matchData['updatedAt'] = now;
+    if ((matchData['tournamentId'] == null || matchData['tournamentId'] == '') && effectiveTourId.isNotEmpty) {
+      matchData['tournamentId'] = effectiveTourId;
+    }
     batch.set(matchRef, matchData, SetOptions(merge: true));
 
     // 2. Update Innings
     final inningsRef = _firestore.doc(FirestorePaths.inning(innings.id));
     final inningsData = innings.toFirestore();
     inningsData['updatedAt'] = now;
+    if ((inningsData['tournamentId'] == null || inningsData['tournamentId'] == '') && effectiveTourId.isNotEmpty) {
+      inningsData['tournamentId'] = effectiveTourId;
+    }
+    if ((inningsData['matchId'] == null || inningsData['matchId'] == '') && match.id.isNotEmpty) {
+      inningsData['matchId'] = match.id;
+    }
     batch.set(inningsRef, inningsData, SetOptions(merge: true));
 
     // 3. Batting Scores
     for (final score in battingScores.values) {
+      if (score.id.trim().isEmpty || score.playerId.trim().isEmpty) continue;
       final bRef = _firestore.doc(FirestorePaths.battingScore(score.id));
-      batch.set(bRef, score.toFirestore(), SetOptions(merge: true));
+      final bData = score.toFirestore();
+      if ((bData['tournamentId'] == null || bData['tournamentId'] == '') && effectiveTourId.isNotEmpty) {
+        bData['tournamentId'] = effectiveTourId;
+      }
+      if ((bData['matchId'] == null || bData['matchId'] == '') && match.id.isNotEmpty) {
+        bData['matchId'] = match.id;
+      }
+      batch.set(bRef, bData, SetOptions(merge: true));
     }
 
     // 4. Bowling Scores
     for (final score in bowlingScores.values) {
+      if (score.id.trim().isEmpty || score.playerId.trim().isEmpty) continue;
       final boRef = _firestore.doc(FirestorePaths.bowlingScore(score.id));
-      batch.set(boRef, score.toFirestore(), SetOptions(merge: true));
+      final boData = score.toFirestore();
+      if ((boData['tournamentId'] == null || boData['tournamentId'] == '') && effectiveTourId.isNotEmpty) {
+        boData['tournamentId'] = effectiveTourId;
+      }
+      if ((boData['matchId'] == null || boData['matchId'] == '') && match.id.isNotEmpty) {
+        boData['matchId'] = match.id;
+      }
+      batch.set(boRef, boData, SetOptions(merge: true));
     }
 
     await batch.commit();

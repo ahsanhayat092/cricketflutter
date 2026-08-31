@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.wpl" "\0"
-            VALUE "FileDescription", "wpl_cricket_app" "\0"
+            VALUE "FileDescription", "PitchPe" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "wpl_cricket_app" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.wpl. All rights reserved." "\0"
             VALUE "OriginalFilename", "wpl_cricket_app.exe" "\0"
-            VALUE "ProductName", "wpl_cricket_app" "\0"
+            VALUE "ProductName", "PitchPe" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

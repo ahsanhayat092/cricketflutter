@@ -48,7 +48,9 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
     final inningsAsync = ref.watch(matchInningsProvider(widget.matchId));
 
     final match = matchAsync.value;
-    final teams = teamsAsync.value ?? [];
+    final matchTourId = match?.tournamentId.isNotEmpty == true ? match!.tournamentId : ref.watch(activeTournamentIdProvider);
+    final matchTeamsAsync = ref.watch(tournamentTeamsProvider(matchTourId));
+    final teams = matchTeamsAsync.value ?? teamsAsync.value ?? [];
     final players = playersAsync.value ?? [];
     final inningsList = inningsAsync.value ?? [];
 
@@ -62,14 +64,22 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
     final teamMap = {for (var t in teams) t.id: t};
     final playerMap = {for (var p in players) p.id: p};
 
-    final teamA = teamMap[match.teamAId] ?? TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
-    final teamB = teamMap[match.teamBId] ?? TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+    final teamA = teamMap[match.teamAId] ??
+        ref.watch(singleTeamStreamProvider(match.teamAId)).value ??
+        TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
+    final teamB = teamMap[match.teamBId] ??
+        ref.watch(singleTeamStreamProvider(match.teamBId)).value ??
+        TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
 
     final innings1 = inningsList.isNotEmpty ? inningsList.firstWhere((i) => i.inningsNumber == 1, orElse: () => inningsList.first) : null;
     final innings2 = inningsList.length > 1 ? inningsList.firstWhere((i) => i.inningsNumber == 2, orElse: () => inningsList.last) : null;
 
-    final inn1BattingTeam = innings1 != null ? (teamMap[innings1.battingTeamId] ?? teamA) : teamA;
-    final inn2BattingTeam = innings2 != null ? (teamMap[innings2.battingTeamId] ?? teamB) : teamB;
+    final inn1BattingTeam = innings1 != null
+        ? (teamMap[innings1.battingTeamId] ?? ref.watch(singleTeamStreamProvider(innings1.battingTeamId)).value ?? teamA)
+        : teamA;
+    final inn2BattingTeam = innings2 != null
+        ? (teamMap[innings2.battingTeamId] ?? ref.watch(singleTeamStreamProvider(innings2.battingTeamId)).value ?? teamB)
+        : teamB;
 
     return Scaffold(
       backgroundColor: AppColors.background,

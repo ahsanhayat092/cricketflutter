@@ -1,20 +1,22 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../auth/providers/auth_provider.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../scoring/models/match_model.dart';
 import '../../scoring/models/team_model.dart';
 import '../../scoring/models/player_model.dart';
+import '../../scoring/models/tournament_model.dart';
 import '../../scoring/presentation/scorer_console_screen.dart';
 import '../../scoring/presentation/opening_players_dialog.dart';
 import '../providers/tournament_providers.dart';
 import '../../standings/providers/standings_provider.dart';
 import 'toss_modal.dart';
 import 'widgets/quick_add_player_dialog.dart';
+import '../../auth/presentation/scorer_pin_auth_dialog.dart';
 
 class MatchLineupScreen extends ConsumerStatefulWidget {
   final MatchModel match;
@@ -148,15 +150,13 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     final standings = standingsAsync.value ?? [];
     final currentMatch = hydrateMatchWithStandings(widget.match, standings);
 
-    final allTeams = ref.read(teamsProvider).value ?? [];
-    final teamA = allTeams.firstWhere(
-      (t) => t.id == currentMatch.teamAId,
-      orElse: () => TeamModel(id: currentMatch.teamAId, name: 'Team A', shortName: 'TMA'),
-    );
-    final teamB = allTeams.firstWhere(
-      (t) => t.id == currentMatch.teamBId,
-      orElse: () => TeamModel(id: currentMatch.teamBId, name: 'Team B', shortName: 'TMB'),
-    );
+    final matchTourId = currentMatch.tournamentId.isNotEmpty ? currentMatch.tournamentId : ref.read(activeTournamentIdProvider);
+    final allTeams = ref.read(tournamentTeamsProvider(matchTourId)).value ?? [];
+    final teamMap = {for (var t in allTeams) t.id: t};
+    final directTeamA = await ref.read(scoringServiceProvider).getTeam(currentMatch.teamAId);
+    final directTeamB = await ref.read(scoringServiceProvider).getTeam(currentMatch.teamBId);
+    final teamA = teamMap[currentMatch.teamAId] ?? directTeamA ?? TeamModel(id: currentMatch.teamAId, name: 'Team A', shortName: 'TMA');
+    final teamB = teamMap[currentMatch.teamBId] ?? directTeamB ?? TeamModel(id: currentMatch.teamBId, name: 'Team B', shortName: 'TMB');
 
     // Determine batting & bowling teams based on toss
     final isTeamAWonToss = _tossWinnerId == teamA.id;
@@ -194,6 +194,24 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
 
     if (openingResult == null) return; // User cancelled
 
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+    if (firebaseUser == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please log in with your Scorer Account to start match in Firebase.'),
+            backgroundColor: AppColors.wicket,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        );
+      }
+      return;
+    }
+
     setState(() => _isStartingMatch = true);
 
     try {
@@ -201,6 +219,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
 
       await syncService.startMatch(
         matchId: currentMatch.id,
+        tournamentId: currentMatch.tournamentId.isNotEmpty ? currentMatch.tournamentId : ref.read(activeTournamentIdProvider),
         teamAId: currentMatch.teamAId,
         teamBId: currentMatch.teamBId,
         teamAPlayingVI: _teamAPlayingVI.toList(),
@@ -248,9 +267,18 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
 
   @override
   Widget build(BuildContext context) {
-    final user = ref.watch(currentUserProvider);
+    final activeId = ref.watch(activeTournamentIdProvider);
+    final matchTourId = widget.match.tournamentId.isNotEmpty ? widget.match.tournamentId : activeId;
+    final isAuthorized = ref.watch(isTournamentScorableProvider(matchTourId));
 
-    if (!user.canScore) {
+    if (!isAuthorized) {
+      final allTournamentsAsync = ref.watch(allTournamentsProvider);
+      final tournament = allTournamentsAsync.value?.cast<TournamentModel?>().firstWhere(
+            (t) => t?.id == matchTourId,
+            orElse: () => ref.watch(activeTournamentProvider).value,
+          ) ?? ref.watch(activeTournamentProvider).value;
+      final tourName = tournament?.name ?? 'this tournament';
+
       return Scaffold(
         appBar: AppBar(
           title: Text(
@@ -259,7 +287,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
           ),
         ),
         body: Center(
-          child: Padding(
+          child: SingleChildScrollView(
             padding: const EdgeInsets.all(28.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -276,7 +304,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  'Match Official Login Required',
+                  'Match Lineup & Toss Restricted',
                   style: GoogleFonts.outfit(
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
@@ -285,33 +313,65 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Only authenticated tournament scorers and admins can select playing VI, conduct the toss, and launch matches.',
+                  'Enter the 4-digit Scorer PIN for $tourName or sign in with an official scorer account assigned to this tournament.',
                   textAlign: TextAlign.center,
                   style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
                 ),
-                const SizedBox(height: 28),
-                ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.accent,
-                    foregroundColor: Colors.black,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                const SizedBox(height: 24),
+                // 1. Official Account Login (Primary Mandatory Action)
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.accent,
+                      foregroundColor: Colors.black,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.login_rounded, size: 20),
+                    label: Text(
+                      'LOG IN TO MANAGE LINEUP',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 13),
+                    ),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LoginScreen()),
+                      );
+                    },
                   ),
-                  icon: const Icon(Icons.login_rounded),
-                  label: Text('SIGN IN AS OFFICIAL', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    );
-                  },
+                ),
+                const SizedBox(height: 12),
+                // 2. Enter Scorer PIN (Secondary)
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.accentCyan,
+                      side: const BorderSide(color: AppColors.accentCyan),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    icon: const Icon(Icons.pin_rounded, size: 18),
+                    label: Text('UNLOCK WITH 4-DIGIT SCORER PIN', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 12)),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (_) => ScorerPinAuthDialog(
+                          initialTournamentId: matchTourId,
+                          initialTournamentName: tournament?.name,
+                          customPrompt: 'Enter the 4-digit Scorer PIN for $tourName to unlock lineup management.',
+                        ),
+                      );
+                    },
+                  ),
                 ),
                 const SizedBox(height: 12),
                 TextButton(
                   onPressed: () => Navigator.pop(context),
                   child: Text(
                     'Back to Fixtures',
-                    style: GoogleFonts.outfit(color: AppColors.accentCyan, fontWeight: FontWeight.w600),
+                    style: GoogleFonts.outfit(color: AppColors.textMuted, fontWeight: FontWeight.w600),
                   ),
                 ),
               ],
@@ -325,15 +385,16 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     final standings = standingsAsync.value ?? [];
     final currentMatch = hydrateMatchWithStandings(widget.match, standings);
 
-    final allTeams = ref.watch(teamsProvider).value ?? [];
-    final teamA = allTeams.firstWhere(
-      (t) => t.id == currentMatch.teamAId,
-      orElse: () => TeamModel(id: currentMatch.teamAId, name: 'Team A', shortName: 'TMA'),
-    );
-    final teamB = allTeams.firstWhere(
-      (t) => t.id == currentMatch.teamBId,
-      orElse: () => TeamModel(id: currentMatch.teamBId, name: 'Team B', shortName: 'TMB'),
-    );
+    final activeMatchTourId = currentMatch.tournamentId.isNotEmpty ? currentMatch.tournamentId : activeId;
+    final allTeams = ref.watch(tournamentTeamsProvider(activeMatchTourId)).value ?? [];
+    final teamMap = {for (var t in allTeams) t.id: t};
+
+    final teamA = teamMap[currentMatch.teamAId] ??
+        ref.watch(singleTeamStreamProvider(currentMatch.teamAId)).value ??
+        TeamModel(id: currentMatch.teamAId, name: 'Team A', shortName: 'TMA');
+    final teamB = teamMap[currentMatch.teamBId] ??
+        ref.watch(singleTeamStreamProvider(currentMatch.teamBId)).value ??
+        TeamModel(id: currentMatch.teamBId, name: 'Team B', shortName: 'TMB');
 
     // Dedicated reactive streams for both teams
     final teamAPlayersAsync = ref.watch(teamPlayersStreamProvider(teamA.id));

@@ -1,9 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wpl_cricket_app/features/scoring/engine/cricket_scoring_engine.dart';
 import 'package:wpl_cricket_app/features/scoring/models/ball_event.dart';
+import 'package:wpl_cricket_app/features/scoring/models/batting_score.dart';
 import 'package:wpl_cricket_app/features/scoring/models/bowling_score.dart';
 import 'package:wpl_cricket_app/features/scoring/models/innings_model.dart';
 import 'package:wpl_cricket_app/features/scoring/models/match_model.dart';
+import 'package:wpl_cricket_app/features/scoring/models/match_rules_model.dart';
 
 void main() {
   group('CricketScoringEngine Tests', () {
@@ -367,6 +369,76 @@ void main() {
       expect(isExhausted, isTrue);
     });
 
+    test('Tournament setting maxOverPerBowler: 2 allows bowler to bowl 2nd over in League stage', () {
+      const matchWith2Overs = MatchModel(
+        id: 'm_2ov',
+        matchNumber: 1,
+        teamAId: 'team1',
+        teamBId: 'team2',
+        date: '2026-08-31',
+        rules: MatchRulesModel(oversPerSide: 6, maxOverPerBowler: 2),
+      );
+
+      final initialScores = {
+        'b1': const BowlingScore(id: '1', inningsId: 'inn1', playerId: 'b1', balls: 6),
+        'b2': const BowlingScore(id: '2', inningsId: 'inn1', playerId: 'b2', balls: 6),
+      };
+
+      // 1. Bowler b1 is eligible for 2nd over (total 12 balls)
+      expect(
+        CricketScoringEngine.getBowlerMaxBalls(
+          bowlerId: 'b1',
+          stage: MatchStage.league,
+          bowlingScores: initialScores.values.toList(),
+          maxOverPerBowler: 2,
+        ),
+        12,
+      );
+
+      expect(
+        CricketScoringEngine.isBowlerQuotaExhausted(
+          bowlerId: 'b1',
+          stage: MatchStage.league,
+          bowlingScores: initialScores.values.toList(),
+          maxOverPerBowler: 2,
+        ),
+        isFalse,
+      );
+
+      // 2. Bowl 1st ball of 2nd over (7th ball overall for b1, mid-over 13th ball in innings)
+      const innings = InningsModel(
+        id: 'inn1',
+        matchId: 'm_2ov',
+        tournamentId: 'main',
+        inningsNumber: 1,
+        battingTeamId: 'team1',
+        bowlingTeamId: 'team2',
+        runs: 30,
+        wickets: 0,
+        balls: 12, // 2.0 overs completed
+      );
+
+      final result = CricketScoringEngine.processDelivery(
+        match: matchWith2Overs,
+        innings: innings,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: initialScores,
+        strikerId: 'p1',
+        nonStrikerId: 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: 'b2', // Over 2 was bowled by b2, b1 bowling Over 3
+        input: const BallDeliveryInput(
+          runsOffBat: 1,
+        ),
+      );
+
+      // Result MUST increment bowler's balls to 7 and MUST NOT reset bowler to null or trigger modal
+      expect(result.bowlingScores['b1']?.balls, 7);
+      expect(result.currentBowlerId, 'b1');
+      expect(result.isOverCompleted, isFalse);
+    });
+
     test('Final match allows exactly ONE bowler up to 2 overs (12 legal balls)', () {
       // 1. Initial state: bowler b1 has bowled 6 balls, b2 has bowled 6 balls
       final scores = [
@@ -534,6 +606,73 @@ void main() {
       expect(legalFhRes.innings.isFreeHit, isFalse);
       expect(legalFhRes.innings.balls, 1);
       expect(legalFhRes.innings.runs, 4); // 1 (nb) + 1 (wd) + 2 (runs)
+    });
+
+    test('Mid-over scoring maintains currentBowlerId until 6th legal ball of over', () {
+      var currentInnings = testInnings1;
+      Map<String, BattingScore> batScores = {};
+      Map<String, BowlingScore> bowlScores = {};
+
+      // Bowl 4 legal balls (e.g. 0.1, 0.2, 0.3, 0.4)
+      for (int i = 1; i <= 4; i++) {
+        final res = CricketScoringEngine.processDelivery(
+          match: testMatch,
+          innings: currentInnings,
+          firstInningsTotalRuns: null,
+          battingScores: batScores,
+          bowlingScores: bowlScores,
+          strikerId: 'p1',
+          nonStrikerId: 'p2',
+          bowlerId: 'b1',
+          previousBowlerId: null,
+          input: const BallDeliveryInput(runsOffBat: 1),
+        );
+        currentInnings = res.innings;
+        batScores = res.battingScores;
+        bowlScores = res.bowlingScores;
+
+        // Current bowler should NOT be cleared mid-over (balls 1 to 4)
+        expect(res.currentBowlerId, 'b1');
+        expect(res.isOverCompleted, isFalse);
+        expect(res.innings.currentBowlerId, 'b1');
+        expect(res.innings.balls, i);
+      }
+
+      // Ball 5
+      var res5 = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: currentInnings,
+        firstInningsTotalRuns: null,
+        battingScores: batScores,
+        bowlingScores: bowlScores,
+        strikerId: 'p1',
+        nonStrikerId: 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(runsOffBat: 0),
+      );
+      expect(res5.currentBowlerId, 'b1');
+      expect(res5.isOverCompleted, isFalse);
+      expect(res5.innings.currentBowlerId, 'b1');
+
+      // Ball 6 (over completion)
+      var res6 = CricketScoringEngine.processDelivery(
+        match: testMatch,
+        innings: res5.innings,
+        firstInningsTotalRuns: null,
+        battingScores: res5.battingScores,
+        bowlingScores: res5.bowlingScores,
+        strikerId: 'p1',
+        nonStrikerId: 'p2',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(runsOffBat: 0),
+      );
+      expect(res6.currentBowlerId, isNull);
+      expect(res6.isOverCompleted, isTrue);
+      expect(res6.previousBowlerId, 'b1');
+      expect(res6.innings.currentBowlerId, isNull);
+      expect(res6.innings.previousBowlerId, 'b1');
     });
   });
 }

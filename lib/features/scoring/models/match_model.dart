@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'match_rules_model.dart';
 
 class RecentEventModel {
   final String type; // "FOUR" | "SIX" | "WICKET" | "MAIDEN"
@@ -116,6 +117,7 @@ class MatchModel {
   final List<String> teamBPlayingVI;
   final String? teamBReserveId;
   final RecentEventModel? recentEvent;
+  final MatchRulesModel rules;
   final String? completedAt;
   final String? createdAt;
   final String? updatedAt;
@@ -143,6 +145,7 @@ class MatchModel {
     this.teamBPlayingVI = const [],
     this.teamBReserveId,
     this.recentEvent,
+    this.rules = const MatchRulesModel(),
     this.completedAt,
     this.createdAt,
     this.updatedAt,
@@ -158,7 +161,7 @@ class MatchModel {
   String get stageDisplayName => matchStage.displayName;
   
   /// League and Playoff matches are 4 overs (24 legal balls). Final match is 5 overs (30 legal balls).
-  int get maxOvers => isFinal ? 5 : (oversPerSide > 0 ? oversPerSide : 4);
+  int get maxOvers => isFinal ? 5 : (rules.oversPerSide > 0 ? rules.oversPerSide : (oversPerSide > 0 ? oversPerSide : 4));
   int get maxBalls => maxOvers * 6;
 
   factory MatchModel.fromMap(String id, Map<String, dynamic>? data) {
@@ -175,31 +178,57 @@ class MatchModel {
     final isFinalStage = stage == 'FINAL';
     final defaultOvers = isFinalStage ? 5 : 4;
 
+    final rawRules = data['rules'] as Map<String, dynamic>?;
+    final parsedRules = rawRules != null
+        ? MatchRulesModel.fromMap(rawRules)
+        : MatchRulesModel.fromMap({
+            ...data,
+            'oversPerSide': data['oversPerSide'] ?? data['overs_per_side'] ?? defaultOvers,
+          });
+
     return MatchModel(
       id: id,
-      tournamentId: data['tournamentId'] as String? ?? 'main',
-      matchNumber: (data['matchNumber'] as num?)?.toInt() ?? 1,
+      tournamentId: (data['tournamentId'] as String?) ??
+          (data['tournament_id'] as String?) ??
+          'main',
+      matchNumber: (data['matchNumber'] as num?)?.toInt() ??
+          (data['match_number'] as num?)?.toInt() ??
+          1,
       stage: stage,
       day: (data['day'] as String?)?.toUpperCase() ?? 'FRIDAY',
-      teamAId: data['teamAId'] as String? ?? '',
-      teamBId: data['teamBId'] as String? ?? '',
-      date: data['date'] as String? ?? '',
-      time: data['time'] as String? ?? '14:00',
-      venue: data['venue'] as String? ?? 'WASA Sports Complex',
+      teamAId: (data['teamAId'] as String?) ??
+          (data['team_a_id'] as String?) ??
+          (data['teamA_id'] as String?) ??
+          (data['teamA'] is String ? data['teamA'] as String : null) ??
+          '',
+      teamBId: (data['teamBId'] as String?) ??
+          (data['team_b_id'] as String?) ??
+          (data['teamB_id'] as String?) ??
+          (data['teamB'] is String ? data['teamB'] as String : null) ??
+          '',
+      date: (data['date'] as String?) ?? '',
+      time: (data['time'] as String?) ?? '14:00',
+      venue: (data['venue'] as String?) ?? 'WASA Sports Complex',
       oversPerSide: (data['oversPerSide'] as num?)?.toInt() ??
+          (data['overs_per_side'] as num?)?.toInt() ??
           (data['maxOvers'] as num?)?.toInt() ??
-          defaultOvers,
+          parsedRules.oversPerSide,
       status: (data['status'] as String?)?.toUpperCase() ?? 'UPCOMING',
-      tossWinnerId: data['tossWinnerId'] as String?,
-      tossDecision: data['tossDecision'] as String?,
-      winningTeamId: data['winningTeamId'] as String?,
-      resultText: data['resultText'] as String?,
-      playerOfMatchId: data['playerOfMatchId'] as String?,
-      teamAPlayingVI: (data['teamAPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-      teamAReserveId: data['teamAReserveId'] as String?,
-      teamBPlayingVI: (data['teamBPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
-      teamBReserveId: data['teamBReserveId'] as String?,
+      tossWinnerId: (data['tossWinnerId'] as String?) ?? (data['toss_winner_id'] as String?),
+      tossDecision: (data['tossDecision'] as String?) ?? (data['toss_decision'] as String?),
+      winningTeamId: (data['winningTeamId'] as String?) ?? (data['winning_team_id'] as String?),
+      resultText: (data['resultText'] as String?) ?? (data['result_text'] as String?),
+      playerOfMatchId: (data['playerOfMatchId'] as String?) ?? (data['player_of_match_id'] as String?),
+      teamAPlayingVI: (data['teamAPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['team_a_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          [],
+      teamAReserveId: (data['teamAReserveId'] as String?) ?? (data['team_a_reserve_id'] as String?),
+      teamBPlayingVI: (data['teamBPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['team_b_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          [],
+      teamBReserveId: (data['teamBReserveId'] as String?) ?? (data['team_b_reserve_id'] as String?),
       recentEvent: data['recentEvent'] != null ? RecentEventModel.fromMap(data['recentEvent'] as Map<String, dynamic>?) : null,
+      rules: parsedRules,
       completedAt: data['completedAt'] as String?,
       createdAt: data['createdAt'] as String?,
       updatedAt: data['updatedAt'] as String?,
@@ -214,6 +243,7 @@ class MatchModel {
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'tournamentId': tournamentId,
       'matchNumber': matchNumber,
       'stage': stage,
@@ -235,6 +265,7 @@ class MatchModel {
       'teamBPlayingVI': teamBPlayingVI,
       'teamBReserveId': teamBReserveId,
       if (recentEvent != null) 'recentEvent': recentEvent!.toMap(),
+      'rules': rules.toMap(),
       'completedAt': completedAt,
       if (createdAt != null) 'createdAt': createdAt,
       'updatedAt': updatedAt ?? DateTime.now().toIso8601String(),
@@ -266,6 +297,7 @@ class MatchModel {
     List<String>? teamBPlayingVI,
     String? teamBReserveId,
     RecentEventModel? recentEvent,
+    MatchRulesModel? rules,
     String? completedAt,
     String? createdAt,
     String? updatedAt,
@@ -293,6 +325,7 @@ class MatchModel {
       teamBPlayingVI: teamBPlayingVI ?? this.teamBPlayingVI,
       teamBReserveId: teamBReserveId ?? this.teamBReserveId,
       recentEvent: recentEvent ?? this.recentEvent,
+      rules: rules ?? this.rules,
       completedAt: completedAt ?? this.completedAt,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,

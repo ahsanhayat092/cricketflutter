@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/pitchpe_logo.dart';
 import '../../match_management/providers/tournament_providers.dart';
 import '../../scoring/models/match_model.dart';
 import '../../scoring/models/team_model.dart';
@@ -166,19 +167,8 @@ class _LiveMatchHubScreenState extends ConsumerState<LiveMatchHubScreen> {
                   ),
                   child: Column(
                     children: [
-                      Container(
-                        width: 72,
-                        height: 72,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.accentCyan.withValues(alpha: 0.1),
-                          border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.3), width: 1.5),
-                        ),
-                        child: const Icon(
-                          Icons.sports_cricket_rounded,
-                          size: 36,
-                          color: AppColors.accentCyan,
-                        ),
+                      const Center(
+                        child: PitchPeLogo.appIcon(height: 64),
                       ),
                       const SizedBox(height: 18),
                       Text(

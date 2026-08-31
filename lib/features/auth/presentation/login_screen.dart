@@ -3,8 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/widgets/pitchpe_logo.dart';
 import '../providers/auth_provider.dart';
-import '../../scoring/presentation/scorer_console_screen.dart';
 import '../../match_management/presentation/fixtures_screen.dart';
 import '../../match_management/providers/tournament_providers.dart';
 import 'scorer_pin_auth_dialog.dart';
@@ -222,52 +222,37 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Header Brand Emblem
-              Center(
-                child: Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.accent, AppColors.accentCyan],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.accent.withValues(alpha: 0.35),
-                        blurRadius: 18,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.sports_cricket,
-                    size: 38,
-                    color: Colors.black,
+              // Approved Clean PitchPe Header (Single Horizontal Brand Lockup)
+              const Padding(
+                padding: EdgeInsets.only(top: 8.0, bottom: 16.0),
+                child: Center(
+                  child: PitchPeLogo(
+                    height: 38,
+                    fit: BoxFit.contain,
                   ),
                 ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
+              // Title
               Text(
                 'CRICKET SCORER ACCESS',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.outfit(
                   fontSize: 22,
                   fontWeight: FontWeight.w900,
-                  color: AppColors.textPrimary,
-                  letterSpacing: 1.2,
+                  color: Colors.white,
+                  letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 4),
+              // Subtitle
               Text(
                 'Multi-Tenant Scoring & Match Control',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.outfit(
                   fontSize: 13,
-                  color: AppColors.textSecondary,
                   fontWeight: FontWeight.w500,
+                  color: Colors.white.withValues(alpha: 0.6),
                 ),
               ),
               const SizedBox(height: 20),
@@ -552,8 +537,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   // AUTHENTICATED PORTAL (When logged in as Scorer or Admin)
   // -------------------------------------------------------------
   Widget _buildAuthenticatedPortal(dynamic user) {
+    final isPlatformAdmin = user.isPlatformAdmin;
     final isAdmin = user.isAdmin;
-    final badgeColor = isAdmin ? AppColors.gold : AppColors.accent;
+    final badgeColor = isPlatformAdmin ? AppColors.accentCyan : (isAdmin ? AppColors.gold : AppColors.accent);
+    final roleTitle = isPlatformAdmin ? 'PLATFORM ADMIN' : (isAdmin ? 'TOURNAMENT ADMIN' : 'OFFICIAL SCORER');
+    final scorableTournaments = ref.watch(scorableTournamentsProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -581,7 +569,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     radius: 28,
                     backgroundColor: badgeColor,
                     child: Icon(
-                      isAdmin ? Icons.admin_panel_settings : Icons.verified_user,
+                      isPlatformAdmin ? Icons.shield_rounded : (isAdmin ? Icons.admin_panel_settings : Icons.verified_user),
                       color: Colors.black,
                       size: 28,
                     ),
@@ -599,7 +587,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                             border: Border.all(color: badgeColor, width: 1),
                           ),
                           child: Text(
-                            isAdmin ? 'TOURNAMENT ADMIN' : 'OFFICIAL SCORER',
+                            roleTitle,
                             style: GoogleFonts.outfit(
                               fontSize: 11,
                               fontWeight: FontWeight.w900,
@@ -640,12 +628,146 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   const SizedBox(width: 8),
                   _buildPermissionBadge(Icons.check_circle, 'Lineup / Toss', AppColors.accentCyan),
                   const SizedBox(width: 8),
-                  _buildPermissionBadge(Icons.check_circle, 'Undo & Overs', AppColors.gold),
+                  _buildPermissionBadge(Icons.check_circle, isPlatformAdmin ? 'All Access' : (isAdmin ? 'Admin Rights' : 'Assigned Only'), AppColors.gold),
                 ],
               ),
             ],
           ),
         ),
+
+        const SizedBox(height: 24),
+
+        // Authorized Tournaments Section
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Authorized Tournaments (${scorableTournaments.length})',
+              style: GoogleFonts.outfit(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            TextButton.icon(
+              onPressed: () {
+                showDialog(
+                  context: context,
+                  builder: (_) => const ScorerPinAuthDialog(),
+                );
+              },
+              icon: const Icon(Icons.pin_rounded, size: 16, color: AppColors.accent),
+              label: Text(
+                'Unlock PIN',
+                style: GoogleFonts.outfit(fontSize: 12, color: AppColors.accent, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        if (scorableTournaments.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+            ),
+            child: Column(
+              children: [
+                const Icon(Icons.lock_outline_rounded, size: 36, color: AppColors.textMuted),
+                const SizedBox(height: 10),
+                Text(
+                  'No Tournaments Assigned',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'You have not been assigned to any tournament yet. Enter a 4-digit Scorer PIN to unlock a tournament.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 14),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    showDialog(
+                      context: context,
+                      builder: (_) => const ScorerPinAuthDialog(),
+                    );
+                  },
+                  icon: const Icon(Icons.pin_rounded, size: 16),
+                  label: const Text('ENTER SCORER PIN'),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.black),
+                ),
+              ],
+            ),
+          )
+        else
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: scorableTournaments.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final tour = scorableTournaments[index];
+              return Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.cardBackground,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.sports_cricket, color: Colors.black, size: 16),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            tour.name,
+                            style: GoogleFonts.outfit(
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            '${tour.oversPerSide} Overs • ${tour.venueName}',
+                            style: GoogleFonts.outfit(fontSize: 11, color: AppColors.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.surfaceLight,
+                        foregroundColor: AppColors.accentCyan,
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      onPressed: () {
+                        ref.read(activeTournamentIdProvider.notifier).state = tour.id;
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const FixturesScreen()),
+                        );
+                      },
+                      child: Text('Score', style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
 
         const SizedBox(height: 24),
         Text(
@@ -659,29 +781,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         const SizedBox(height: 12),
 
         // Action Buttons
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: Colors.black,
-            padding: const EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-          ),
-          icon: const Icon(Icons.sports_cricket, size: 20),
-          label: Text(
-            'OPEN LIVE MATCH SCORER CONSOLE',
-            style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w900),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const ScorerConsoleScreen(matchId: 'match-1'),
-              ),
-            );
-          },
-        ),
-        const SizedBox(height: 10),
-
         OutlinedButton.icon(
           style: OutlinedButton.styleFrom(
             foregroundColor: AppColors.accentCyan,

@@ -11,7 +11,9 @@ import '../../scoring/models/match_model.dart';
 import '../../scoring/models/team_model.dart';
 import '../../scoring/models/player_model.dart';
 import '../../scoring/models/innings_model.dart';
+import '../../scoring/models/tournament_model.dart';
 import '../../scoring/presentation/scorer_console_screen.dart';
+import '../../auth/presentation/scorer_pin_auth_dialog.dart';
 import 'widgets/live_scoreboard_banner.dart';
 import 'widgets/delivery_wheel.dart';
 import 'widgets/live_scorecard_tabs.dart';
@@ -100,19 +102,31 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
                 bowlingTeamId: match.teamBId,
               );
 
-        final teams = teamsAsync.value ?? [];
+        final matchTourId = match.tournamentId.isNotEmpty ? match.tournamentId : ref.watch(activeTournamentIdProvider);
+        final matchTeamsAsync = ref.watch(tournamentTeamsProvider(matchTourId));
+        final teams = matchTeamsAsync.value ?? teamsAsync.value ?? [];
         final players = playersAsync.value ?? [];
 
         final teamMap = {for (var t in teams) t.id: t};
         final playerMap = {for (var p in players) p.id: p};
 
         final teamA = teamMap[match.teamAId] ??
-            TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
+            ref.watch(singleTeamStreamProvider(match.teamAId)).value ??
+            (match.teamAId.isNotEmpty
+                ? TeamModel(id: match.teamAId, name: 'Team ${match.teamAId.substring(0, match.teamAId.length.clamp(1, 4))}', shortName: match.teamAId.substring(0, match.teamAId.length.clamp(1, 3)).toUpperCase())
+                : const TeamModel(id: '', name: 'TBD', shortName: 'TBD'));
         final teamB = teamMap[match.teamBId] ??
-            TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+            ref.watch(singleTeamStreamProvider(match.teamBId)).value ??
+            (match.teamBId.isNotEmpty
+                ? TeamModel(id: match.teamBId, name: 'Team ${match.teamBId.substring(0, match.teamBId.length.clamp(1, 4))}', shortName: match.teamBId.substring(0, match.teamBId.length.clamp(1, 3)).toUpperCase())
+                : const TeamModel(id: '', name: 'TBD', shortName: 'TBD'));
 
-        final battingTeam = teamMap[currentInnings.battingTeamId] ?? teamA;
-        final bowlingTeam = teamMap[currentInnings.bowlingTeamId] ?? teamB;
+        final battingTeam = teamMap[currentInnings.battingTeamId] ??
+            ref.watch(singleTeamStreamProvider(currentInnings.battingTeamId)).value ??
+            (currentInnings.battingTeamId == teamB.id ? teamB : teamA);
+        final bowlingTeam = teamMap[currentInnings.bowlingTeamId] ??
+            ref.watch(singleTeamStreamProvider(currentInnings.bowlingTeamId)).value ??
+            (currentInnings.bowlingTeamId == teamA.id ? teamA : teamB);
 
         final firstInningsRuns = inningsList.length > 1 ? inningsList.first.runs : null;
 
@@ -199,32 +213,78 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
                 ),
               ],
 
-              // Scorer Access Button (if authenticated official)
-              if (user.canScore)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: IconButton(
-                    icon: const Icon(Icons.edit_note_rounded, color: AppColors.accent),
-                    tooltip: match.isUpcoming ? 'Setup Lineups & Start Match' : 'Open Scorer Console',
-                    onPressed: () {
-                      if (match.isUpcoming) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => MatchLineupScreen(match: match),
-                          ),
-                        );
-                      } else {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ScorerConsoleScreen(matchId: widget.matchId),
-                          ),
-                        );
-                      }
-                    },
-                  ),
+              // Scorer Access Button (PIN-aware or authenticated official)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Builder(
+                  builder: (ctx) {
+                    final activeId = ref.watch(activeTournamentIdProvider);
+                    final matchTourId = match.tournamentId.isNotEmpty ? match.tournamentId : activeId;
+                    final isMatchScorable = ref.watch(isTournamentScorableProvider(matchTourId));
+
+                    return IconButton(
+                      icon: Icon(
+                        Icons.edit_note_rounded,
+                        color: isMatchScorable ? AppColors.accent : AppColors.textMuted,
+                      ),
+                      tooltip: match.isUpcoming ? 'Setup Lineups & Start Match' : 'Open Scorer Console',
+                      onPressed: () async {
+                        if (isMatchScorable) {
+                          if (match.isUpcoming) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => MatchLineupScreen(match: match),
+                              ),
+                            );
+                          } else {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ScorerConsoleScreen(matchId: widget.matchId),
+                              ),
+                            );
+                          }
+                        } else {
+                          final allTournamentsAsync = ref.read(allTournamentsProvider);
+                          final tournament = allTournamentsAsync.value?.cast<TournamentModel?>().firstWhere(
+                                (t) => t?.id == matchTourId,
+                                orElse: () => ref.read(activeTournamentProvider).value,
+                              ) ?? ref.read(activeTournamentProvider).value;
+                          final tourName = tournament?.name ?? 'this tournament';
+
+                          final result = await showDialog<bool>(
+                            context: context,
+                            builder: (_) => ScorerPinAuthDialog(
+                              initialTournamentId: matchTourId,
+                              initialTournamentName: tournament?.name,
+                              customPrompt: 'Enter the 4-digit Scorer PIN for $tourName to unlock this live scoring console.',
+                            ),
+                          );
+
+                          if (result == true && context.mounted) {
+                            if (match.isUpcoming) {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => MatchLineupScreen(match: match),
+                                ),
+                              );
+                            } else {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => ScorerConsoleScreen(matchId: widget.matchId),
+                                ),
+                              );
+                            }
+                          }
+                        }
+                      },
+                    );
+                  },
                 ),
+              ),
             ],
           ),
           body: Stack(

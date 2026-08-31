@@ -52,18 +52,18 @@ void main() async {
 
   runApp(
     const ProviderScope(
-      child: WplCricketApp(),
+      child: PitchPeApp(),
     ),
   );
 }
 
-class WplCricketApp extends StatelessWidget {
-  const WplCricketApp({super.key});
+class PitchPeApp extends StatelessWidget {
+  const PitchPeApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'WASA Premier League',
+      title: 'PitchPe',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
       home: const MainNavigationApp(),

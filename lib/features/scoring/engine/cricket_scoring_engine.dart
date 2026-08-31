@@ -47,9 +47,17 @@ class CricketScoringEngine {
     required String bowlerId,
     required MatchStage stage,
     required List<BowlingScore> bowlingScores,
+    int? maxOverPerBowler,
   }) {
+    final configuredMaxOvers = (maxOverPerBowler != null && maxOverPerBowler > 0) ? maxOverPerBowler : 1;
+
+    // If rules allow > 1 over per bowler (e.g., 2, 4, etc.)
+    if (configuredMaxOvers > 1) {
+      return configuredMaxOvers * 6;
+    }
+
     final isFinal = isFinalMatch(stage);
-    if (!isFinal) return 6; // League: strictly 6 legal balls (1 over)
+    if (!isFinal) return 6; // Default League: strictly 6 legal balls (1 over)
 
     final bowlersWith2Overs = bowlingScores.where((b) => b.balls >= 12).toList();
     final alreadyHas2OverBowler = bowlersWith2Overs.isNotEmpty;
@@ -79,6 +87,7 @@ class CricketScoringEngine {
     required String bowlerId,
     required MatchStage stage,
     required List<BowlingScore> bowlingScores,
+    int? maxOverPerBowler,
   }) {
     final current = bowlingScores.firstWhere(
       (b) => b.playerId == bowlerId,
@@ -88,6 +97,7 @@ class CricketScoringEngine {
       bowlerId: bowlerId,
       stage: stage,
       bowlingScores: bowlingScores,
+      maxOverPerBowler: maxOverPerBowler,
     );
   }
 
@@ -97,6 +107,7 @@ class CricketScoringEngine {
     required String? lastOverBowlerId,
     required MatchStage stage,
     required List<BowlingScore> bowlingScores,
+    int? maxOverPerBowler,
   }) {
     // 1. Cannot bowl consecutive overs
     if (lastOverBowlerId != null && bowlerId == lastOverBowlerId) {
@@ -107,6 +118,7 @@ class CricketScoringEngine {
       bowlerId: bowlerId,
       stage: stage,
       bowlingScores: bowlingScores,
+      maxOverPerBowler: maxOverPerBowler,
     )) {
       return false;
     }
@@ -119,12 +131,14 @@ class CricketScoringEngine {
     required String? previousBowlerId,
     required bool isFinalMatch,
     required Map<String, BowlingScore> bowlingScores,
+    int? maxOverPerBowler,
   }) {
     return isBowlerEligibleForNextOver(
       bowlerId: bowlerId,
       lastOverBowlerId: previousBowlerId,
       stage: isFinalMatch ? MatchStage.finalMatch : MatchStage.league,
       bowlingScores: bowlingScores.values.toList(),
+      maxOverPerBowler: maxOverPerBowler,
     );
   }
 
@@ -134,6 +148,7 @@ class CricketScoringEngine {
     required String? previousBowlerId,
     required bool isFinalMatch,
     required Map<String, BowlingScore> bowlingScores,
+    int? maxOverPerBowler,
   }) {
     if (previousBowlerId != null && bowlerId == previousBowlerId) {
       return 'Bowled Previous Over (Consecutive Lock)';
@@ -143,12 +158,14 @@ class CricketScoringEngine {
       bowlerId: bowlerId,
       stage: stage,
       bowlingScores: bowlingScores.values.toList(),
+      maxOverPerBowler: maxOverPerBowler,
     )) {
       final current = bowlingScores[bowlerId]?.oversString ?? '0.0';
       final maxOvers = getBowlerMaxBalls(
         bowlerId: bowlerId,
         stage: stage,
         bowlingScores: bowlingScores.values.toList(),
+        maxOverPerBowler: maxOverPerBowler,
       ) ~/ 6;
       return 'Quota Completed ($current / $maxOvers.0 ov)';
     }
@@ -161,6 +178,7 @@ class CricketScoringEngine {
     required String? previousBowlerId,
     required bool isFinalMatch,
     required Map<String, BowlingScore> bowlingScores,
+    int? maxOverPerBowler,
   }) {
     return bowlingPlayingVI.where((bowlerId) {
       return canBowlerBowlNextOver(
@@ -168,6 +186,7 @@ class CricketScoringEngine {
         previousBowlerId: previousBowlerId,
         isFinalMatch: isFinalMatch,
         bowlingScores: bowlingScores,
+        maxOverPerBowler: maxOverPerBowler,
       );
     }).toList();
   }
@@ -207,12 +226,14 @@ class CricketScoringEngine {
     String? celebrationType;
     String? celebrationText;
 
+    final rules = match.rules;
     final bowlerBallsSoFar = bowlingScores[bowlerId]?.balls ?? 0;
     final stageEnum = match.isFinal ? MatchStage.finalMatch : MatchStage.league;
     final maxBallsAllowed = getBowlerMaxBalls(
       bowlerId: bowlerId,
       stage: stageEnum,
       bowlingScores: bowlingScores.values.toList(),
+      maxOverPerBowler: rules.maxOverPerBowler,
     );
     final isNewOverStart = innings.balls > 0 && (innings.balls % AppConstants.ballsPerOver == 0);
     final isConsecutiveViolation = isNewOverStart && previousBowlerId != null && bowlerId == previousBowlerId;
@@ -231,6 +252,10 @@ class CricketScoringEngine {
       );
     }
 
+    final maxWickets = rules.maxWickets > 0 ? rules.maxWickets : AppConstants.maxWicketsPerInnings;
+    final isLmsEnabled = rules.allowLastManStanding;
+    final lmsThreshold = maxWickets - 1;
+
     // 1. Process Extras & Delivery Legality
     int deliveryTotalRuns = 0;
     int runsChargedToBowler = 0;
@@ -239,12 +264,14 @@ class CricketScoringEngine {
 
     if (input.isWide) {
       currentWides += 1;
-      final extraRuns = input.extraRuns > 0 ? input.extraRuns : 1;
+      final wideDefault = rules.wideRuns > 0 ? rules.wideRuns : 1;
+      final extraRuns = input.extraRuns > 0 ? input.extraRuns : wideDefault;
       deliveryTotalRuns += extraRuns;
       runsChargedToBowler += extraRuns;
     } else if (input.isNoBall) {
       currentNoBalls += 1;
-      final extraRuns = input.extraRuns > 0 ? input.extraRuns : 1;
+      final nbDefault = rules.noBallRuns > 0 ? rules.noBallRuns : 1;
+      final extraRuns = input.extraRuns > 0 ? input.extraRuns : nbDefault;
       deliveryTotalRuns += extraRuns;
       runsChargedToBowler += extraRuns;
       if (input.runsOffBat > 0) {
@@ -331,7 +358,7 @@ class CricketScoringEngine {
       );
 
       // Replace out batsman with incoming batsman if not all out
-      if (currentWickets < AppConstants.maxWicketsPerInnings && input.newBatsmanId != null) {
+      if (currentWickets < maxWickets && input.newBatsmanId != null) {
         final newBatterId = input.newBatsmanId!;
         updatedBattingScores[newBatterId] = BattingScore(
           id: '${innings.id}_$newBatterId',
@@ -340,8 +367,8 @@ class CricketScoringEngine {
           battingOrder: updatedBattingScores.length + 1,
         );
 
-        if (currentWickets == 5) {
-          // 5th wicket falls: 6th player now bats alone as Last Man Standing
+        if (isLmsEnabled && currentWickets == lmsThreshold) {
+          // Last Man Standing: Lone batsman bats alone
           newStrikerId = newBatterId;
           newNonStrikerId = newBatterId;
           celebrationType = 'LAST_MAN_STANDING';
@@ -353,8 +380,8 @@ class CricketScoringEngine {
             newNonStrikerId = newBatterId;
           }
         }
-      } else if (currentWickets == 5) {
-        // 5th wicket fell and all remaining players already in battingScores
+      } else if (isLmsEnabled && currentWickets == lmsThreshold) {
+        // Last Man Standing fell into place and remaining player is already active
         final remainingBatter = updatedBattingScores.values.where((b) => !b.isOut).firstOrNull;
         if (remainingBatter != null) {
           newStrikerId = remainingBatter.playerId;
@@ -433,7 +460,7 @@ class CricketScoringEngine {
       }
     }
 
-    bool allOut = currentWickets >= AppConstants.maxWicketsPerInnings;
+    bool allOut = currentWickets >= maxWickets;
     bool oversFinished = currentBalls >= match.maxBalls;
 
     bool isInningsCompleted = false;
@@ -447,7 +474,7 @@ class CricketScoringEngine {
         isInningsCompleted = true;
         isMatchCompleted = true;
         winnerTeamId = innings.battingTeamId;
-        final wicketsLeft = AppConstants.maxWicketsPerInnings - currentWickets;
+        final wicketsLeft = maxWickets - currentWickets;
         final winnerName = teamNames?[winnerTeamId] ??
             (winnerTeamId == match.teamAId
                 ? 'Team A'
@@ -470,10 +497,8 @@ class CricketScoringEngine {
               '$winnerName won by $runMargin ${runMargin == 1 ? 'run' : 'runs'}';
         }
       }
-    } else {
-      if (allOut || oversFinished) {
-        isInningsCompleted = true;
-      }
+    } else if (allOut || oversFinished) {
+      isInningsCompleted = true;
     }
 
     final recentBallsList = List<String>.from(innings.recentBalls);
@@ -513,6 +538,11 @@ class CricketScoringEngine {
       allOut: allOut,
       isFreeHit: nextFreeHit,
       recentBalls: recentBallsList,
+      currentBowlerId: (isOverCompleted && !isInningsCompleted && !isMatchCompleted) ? null : nextBowlerId,
+      clearCurrentBowler: isOverCompleted && !isInningsCompleted && !isMatchCompleted,
+      strikerId: newStrikerId,
+      nonStrikerId: newNonStrikerId,
+      previousBowlerId: nextPreviousBowlerId,
     );
 
     // Update Match Model

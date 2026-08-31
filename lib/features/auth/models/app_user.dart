@@ -17,7 +17,11 @@ class AppUser {
     this.createdBy,
   });
 
-  bool get isAdmin => role.toLowerCase() == 'admin';
+  static const String platformAdminEmail = 'ahsanhayat092@gmail.com';
+
+  bool get isPlatformAdmin =>
+      email.toLowerCase().trim() == platformAdminEmail.toLowerCase();
+  bool get isAdmin => isPlatformAdmin || role.toLowerCase() == 'admin';
   bool get isScorer => role.toLowerCase() == 'scorer';
   bool get canScore => isAdmin || isScorer;
 

@@ -10,6 +10,7 @@ class BowlerSelectDialog extends StatefulWidget {
   final List<PlayerModel> bowlingSquad;
   final String? previousBowlerId;
   final bool isFinalMatch;
+  final int maxOverPerBowler;
   final Map<String, BowlingScore> bowlingScores;
   final String title;
 
@@ -18,6 +19,7 @@ class BowlerSelectDialog extends StatefulWidget {
     required this.bowlingSquad,
     required this.previousBowlerId,
     required this.isFinalMatch,
+    this.maxOverPerBowler = 1,
     required this.bowlingScores,
     this.title = 'SELECT MANDATORY NEXT BOWLER',
   });
@@ -29,6 +31,16 @@ class BowlerSelectDialog extends StatefulWidget {
 class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
   String? _selectedBowlerId;
 
+  String get _subtitle {
+    if (widget.maxOverPerBowler > 1) {
+      return 'Max ${widget.maxOverPerBowler} overs per bowler (Consecutive guard active)';
+    }
+    if (widget.isFinalMatch) {
+      return 'Final Match: Max 1 bowler can bowl 2 overs (others max 1)';
+    }
+    return 'League Stage: Max 1 over per bowler (Consecutive guard active)';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -39,6 +51,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
         previousBowlerId: widget.previousBowlerId,
         isFinalMatch: widget.isFinalMatch,
         bowlingScores: widget.bowlingScores,
+        maxOverPerBowler: widget.maxOverPerBowler,
       );
       if (eligible) {
         _selectedBowlerId = bowler.id;
@@ -84,9 +97,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                           ),
                         ),
                         Text(
-                          widget.isFinalMatch
-                              ? 'Final Match: Max 1 bowler can bowl 2 overs (others max 1)'
-                              : 'League Stage: Max 1 over per bowler (Consecutive guard active)',
+                          _subtitle,
                           style: GoogleFonts.outfit(
                             fontSize: 11,
                             color: AppColors.textMuted,
@@ -112,6 +123,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                       previousBowlerId: widget.previousBowlerId,
                       isFinalMatch: widget.isFinalMatch,
                       bowlingScores: widget.bowlingScores,
+                      maxOverPerBowler: widget.maxOverPerBowler,
                     );
 
                     final ineligibilityReason = CricketScoringEngine.getBowlerIneligibilityReason(
@@ -119,6 +131,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                       previousBowlerId: widget.previousBowlerId,
                       isFinalMatch: widget.isFinalMatch,
                       bowlingScores: widget.bowlingScores,
+                      maxOverPerBowler: widget.maxOverPerBowler,
                     );
 
                     final score = widget.bowlingScores[bowler.id];
@@ -131,6 +144,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                       bowlerId: bowler.id,
                       stage: stage,
                       bowlingScores: widget.bowlingScores.values.toList(),
+                      maxOverPerBowler: widget.maxOverPerBowler,
                     );
                     final maxOvers = maxBalls ~/ 6;
 

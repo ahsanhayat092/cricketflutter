@@ -10,34 +10,67 @@ import '../../match_management/providers/tournament_providers.dart';
 final standingsStreamProvider = StreamProvider<List<StandingWithTeam>>((ref) {
   final firestore = FirebaseFirestore.instance;
   final activeTournamentId = ref.watch(activeTournamentIdProvider);
+  final service = ref.watch(scoringServiceProvider);
 
   return firestore
       .collection('standings')
       .snapshots()
       .asyncMap((standingsSnap) async {
-    final teamsSnap = await firestore
-        .collection('teams')
-        .get();
-
-    final teamsMap = {
-      for (var doc in teamsSnap.docs) doc.id: TeamModel.fromFirestore(doc)
+    // 1. Get the authoritative list of participating teams for this tournament
+    final List<TeamModel> tournamentTeams = await service.getTeams(tournamentId: activeTournamentId);
+    final Map<String, TeamModel> teamsMap = {
+      for (final team in tournamentTeams) team.id: team,
     };
+    final Set<String> validTeamIds = teamsMap.keys.toSet();
 
-    final list = standingsSnap.docs
-        .map((doc) => StandingModel.fromFirestore(doc))
-        .where((s) {
-          if (activeTournamentId == 'main') {
-            return s.tournamentId.isEmpty || s.tournamentId == 'main';
-          }
-          return s.tournamentId == activeTournamentId;
-        })
-        .map((standing) {
-          return StandingWithTeam(
-            standing: standing,
-            team: teamsMap[standing.teamId],
-          );
-        })
-        .toList();
+    // 2. Filter standings strictly to documents belonging to actual tournament teams
+    final List<StandingWithTeam> list = [];
+    final Set<String> processedTeamIds = {};
+
+    for (final doc in standingsSnap.docs) {
+      final standing = StandingModel.fromFirestore(doc);
+
+      // Check tournament scoping
+      final isMatchingTournament = activeTournamentId == 'main'
+          ? (standing.tournamentId.isEmpty || standing.tournamentId == 'main')
+          : (standing.tournamentId == activeTournamentId);
+
+      if (!isMatchingTournament) continue;
+
+      // CRITICAL: Exclude orphan/phantom standing records not in this tournament's team roster
+      final matchedTeamId = validTeamIds.contains(standing.teamId)
+          ? standing.teamId
+          : (validTeamIds.contains(standing.id) ? standing.id : null);
+
+      if (matchedTeamId == null) {
+        // This is a phantom/orphan standing doc for a non-participating team — discard it!
+        continue;
+      }
+
+      final team = teamsMap[matchedTeamId];
+      if (team != null) {
+        list.add(StandingWithTeam(
+          standing: standing,
+          team: team,
+        ));
+        processedTeamIds.add(matchedTeamId);
+      }
+    }
+
+    // 3. For any participating tournament team that does not have a standings doc yet, create default 0-0 entry
+    for (final team in tournamentTeams) {
+      if (!processedTeamIds.contains(team.id)) {
+        list.add(StandingWithTeam(
+          standing: StandingModel(
+            id: team.id,
+            tournamentId: activeTournamentId,
+            teamId: team.id,
+            position: list.length + 1,
+          ),
+          team: team,
+        ));
+      }
+    }
 
     // Sort strictly by position ASC (1, 2, 3...) or by Points then NRR if position is equal
     list.sort((a, b) {

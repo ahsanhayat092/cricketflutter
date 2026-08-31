@@ -204,7 +204,7 @@ class _TournamentPermissionsScreenState extends ConsumerState<TournamentPermissi
                     Navigator.pop(ctx);
 
                     // Offer WhatsApp invite
-                    final inviteMsg = '🏏 Hi $name, you have been invited as a *$selectedRole* for *${tournament.name}* on WASA Cricket!\n\n'
+                    final inviteMsg = '🏏 Hi $name, you have been invited as a *$selectedRole* for *${tournament.name}* on PitchPe!\n\n'
                         'Open live tournament portal: ${tournament.shareUrl}\n'
                         'Matchday Ground Scorer PIN: *${tournament.scorerPin}*';
                     final text = Uri.encodeComponent(inviteMsg);
@@ -233,8 +233,58 @@ class _TournamentPermissionsScreenState extends ConsumerState<TournamentPermissi
 
   @override
   Widget build(BuildContext context) {
+    final activeId = ref.watch(activeTournamentIdProvider);
     final activeTournamentAsync = ref.watch(activeTournamentProvider);
     final membersAsync = ref.watch(activeTournamentMembersProvider);
+    final canManage = ref.watch(isTournamentAdminProvider(activeId));
+
+    if (!canManage) {
+      return Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: AppColors.cardBackground,
+          title: Text(
+            'Permissions (Restricted)',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+          ),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.wicket.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.lock_rounded, size: 48, color: AppColors.wicket),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Administrator Access Required',
+                  style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Only tournament owners and administrators can manage roles, invite scorers, or view the scorer PIN.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.outfit(fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.accent, foregroundColor: Colors.black),
+                  child: const Text('GO BACK'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: AppColors.background,
