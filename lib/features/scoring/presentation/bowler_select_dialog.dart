@@ -36,9 +36,9 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
       return 'Max ${widget.maxOverPerBowler} overs per bowler (Consecutive guard active)';
     }
     if (widget.isFinalMatch) {
-      return 'Final Match: Max 1 bowler can bowl 2 overs (others max 1)';
+      return 'Final Match: Special quota active (Consecutive guard active)';
     }
-    return 'League Stage: Max 1 over per bowler (Consecutive guard active)';
+    return 'Max 1 over per bowler (Consecutive guard active)';
   }
 
   @override

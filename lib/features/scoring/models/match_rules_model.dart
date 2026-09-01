@@ -1,3 +1,5 @@
+import '../../../core/constants/app_constants.dart';
+
 // -------------------------------------------------------------
 // Tournament / Match Rules Model for PitchPe Mobile App
 // -------------------------------------------------------------
@@ -79,12 +81,18 @@ class MatchRulesModel {
         (data['max_wickets'] as num?)?.toInt() ??
         0;
 
+    final explicitMaxBowler = (data['maxOverPerBowler'] as num?)?.toInt() ??
+        (data['max_over_per_bowler'] as num?)?.toInt() ??
+        (data['max_overs_per_bowler'] as num?)?.toInt() ??
+        (data['maxOversPerBowler'] as num?)?.toInt();
+    final calculatedMaxBowler = explicitMaxBowler != null && explicitMaxBowler > 0
+        ? explicitMaxBowler
+        : AppConstants.getMaxOverPerBowler(oversPerSide: overs);
+
     return MatchRulesModel(
       formatType: formatType,
       oversPerSide: overs,
-      maxOverPerBowler: (data['maxOverPerBowler'] as num?)?.toInt() ??
-          (data['max_over_per_bowler'] as num?)?.toInt() ??
-          (overs <= 5 ? 1 : 2),
+      maxOverPerBowler: calculatedMaxBowler,
       playersPerTeam: explicitPlayers,
       maxWickets: explicitMaxWickets,
       allowLastManStanding: lms,

@@ -1,36 +1,35 @@
 class AppConstants {
-  static const String tournamentId = 'wasa-premier-league';
-  static const String tournamentName = 'WASA Premier League';
-  static const String tournamentShortName = 'WPL';
+  static const String appPlatformName = 'PitchPe';
+  static const String defaultTournamentId = 'main';
+  static const String defaultTournamentName = 'Cricket Tournament';
+  static const String defaultTournamentShortName = 'CRIC';
+  static const String defaultVenue = 'Cricket Ground';
+
+  // Legacy compatibility fallbacks
+  static const String tournamentId = 'main';
+  static const String tournamentName = defaultTournamentName;
+  static const String tournamentShortName = defaultTournamentShortName;
 
   // Squad Rules
-  static const int playingSquadSize = 6;
+  static const int playingSquadSize = 11;
+  static const int tapeBallSquadSize = 6;
   static const int reserveSquadSize = 1;
-
-  // Wickets Rule
-  static const int maxWicketsPerInnings = 6; // 6 dismissals = ALL OUT with Last Man Standing in 6-a-side
 
   // Overs Rules
   static const int ballsPerOver = 6;
-  static const int leagueOvers = 4;
-  static const int leagueLegalBalls = leagueOvers * ballsPerOver; // 24 balls
+  static const int defaultOvers = 20;
 
-  static const int finalOvers = 5;
-  static const int finalLegalBalls = finalOvers * ballsPerOver; // 30 balls
+  // Dynamic Bowling Quota Helper
+  // E.g. <=5 overs -> 1, 10 overs -> 2, 20 overs -> 4, 50 overs -> 10
+  static int getMaxOverPerBowler({required int oversPerSide, int? explicitMax}) {
+    if (explicitMax != null && explicitMax > 0) return explicitMax;
+    if (oversPerSide <= 5) return 1;
+    return (oversPerSide / 5).ceil();
+  }
 
-  // Bowling Quota Rules
-  // League: Each bowler can bowl max 1 over (6 legal balls)
-  static const int leagueMaxOversPerBowler = 1;
-  static const int leagueMaxBallsPerBowler = 6;
-
-  // Final: Exactly ONE bowler can bowl up to 2 overs (12 legal balls); others max 1 over (6 balls)
-  static const int finalMaxOversForSingleBowler = 2;
-  static const int finalMaxBallsForSingleBowler = 12;
-  static const int finalMaxOversForOtherBowlers = 1;
-  static const int finalMaxBallsForOtherBowlers = 6;
-
-  // Points
+  // Points Table
   static const int winPoints = 2;
   static const int tiePoints = 1;
+  static const int noResultPoints = 1;
   static const int lossPoints = 0;
 }

@@ -134,6 +134,28 @@ void main() {
       expect(hydrated.isFinal, isTrue);
     });
 
+    test('Hydrates DIRECT_TOP2 Grand Final with Rank 1 and Rank 2 teams', () {
+      const finalMatchTbd = MatchModel(
+        id: 'match_final_direct',
+        matchNumber: 15,
+        stage: 'FINAL',
+        teamAId: 'rank_1',
+        teamBId: 'rank_2',
+        date: '2026-08-25',
+        status: 'UPCOMING',
+      );
+
+      final hydrated = hydrateMatchWithStandings(
+        finalMatchTbd,
+        standings,
+        playoffFormat: 'DIRECT_TOP2',
+      );
+
+      expect(hydrated.teamAId, equals('team_rs')); // Rank 1
+      expect(hydrated.teamBId, equals('team_tw')); // Rank 2
+      expect(hydrated.isFinal, isTrue);
+    });
+
     test('Leaves League matches untouched even if standings are available', () {
       const leagueMatch = MatchModel(
         id: 'match_1',

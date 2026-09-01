@@ -1,3 +1,4 @@
+import '../../../core/constants/app_constants.dart';
 import 'match_rules_model.dart';
 
 class TournamentBranding {
@@ -41,6 +42,7 @@ class TournamentModel {
   final String venueName;
   final String? venueMapsUrl;
   final String status; // 'UPCOMING' | 'LIVE' | 'COMPLETED'
+  final String playoffFormat; // 'DIRECT_TOP2' | 'PAGE_PLAYOFF_TOP3' | 'IPL_TOP4' | 'SEMI_FINALS'
   final int winPoints;
   final int tiePoints;
   final int noResultPoints;
@@ -53,7 +55,7 @@ class TournamentModel {
     this.id = 'main',
     required this.name,
     required this.shortName,
-    this.slug = 'wasa-2026',
+    this.slug = 'cricket-tournament',
     this.formatType = 'TAPE_BALL_INDOOR',
     this.oversPerSide = 4,
     this.maxOverPerBowler = 1,
@@ -64,9 +66,10 @@ class TournamentModel {
     this.ownerId,
     this.ownerEmail,
     this.branding = const TournamentBranding(),
-    this.venueName = 'WASA Sports Complex',
+    this.venueName = 'Cricket Ground',
     this.venueMapsUrl,
     this.status = 'LIVE',
+    this.playoffFormat = 'PAGE_PLAYOFF_TOP3',
     this.winPoints = 2,
     this.tiePoints = 1,
     this.noResultPoints = 1,
@@ -90,7 +93,7 @@ class TournamentModel {
 
   bool isPinValid(String pin) => pin.trim() == scorerPin.trim();
 
-  String get shareUrl => 'https://wasacricket.vercel.app/t/$slug';
+  String get shareUrl => 'https://pitchpe.vercel.app/t/$slug';
 
   String get shareWhatsAppText =>
       '🏏 Follow *$name* on PitchPe!\n📊 Live Scores & Standings: $shareUrl';
@@ -99,9 +102,9 @@ class TournamentModel {
     if (data == null) {
       return const TournamentModel(
         id: 'main',
-        name: 'WASA Premier League 2026',
-        shortName: 'WPL 2026',
-        slug: 'wasa-2026',
+        name: 'Cricket Tournament',
+        shortName: 'CRIC',
+        slug: 'cricket-tournament',
       );
     }
     final formatType = data['formatType'] as String? ?? 'TAPE_BALL_INDOOR';
@@ -137,16 +140,22 @@ class TournamentModel {
         ? explicitMaxWickets
         : defaultMaxWickets;
 
+    final explicitMaxBowler = (data['maxOverPerBowler'] as num?)?.toInt() ??
+        (data['max_over_per_bowler'] as num?)?.toInt() ??
+        (data['max_overs_per_bowler'] as num?)?.toInt() ??
+        (data['maxOversPerBowler'] as num?)?.toInt();
+    final effectiveMaxBowler = explicitMaxBowler != null && explicitMaxBowler > 0
+        ? explicitMaxBowler
+        : AppConstants.getMaxOverPerBowler(oversPerSide: overs);
+
     return TournamentModel(
       id: id,
-      name: data['name'] as String? ?? 'WASA Premier League 2026',
-      shortName: data['shortName'] as String? ?? 'WPL 2026',
-      slug: data['slug'] as String? ?? (id == 'main' ? 'wasa-2026' : id),
+      name: data['name'] as String? ?? 'Cricket Tournament',
+      shortName: data['shortName'] as String? ?? 'CRIC',
+      slug: data['slug'] as String? ?? (id == 'main' ? 'cricket-tournament' : id),
       formatType: formatType,
       oversPerSide: overs,
-      maxOverPerBowler: (data['maxOverPerBowler'] as num?)?.toInt() ??
-          (data['max_over_per_bowler'] as num?)?.toInt() ??
-          1,
+      maxOverPerBowler: effectiveMaxBowler,
       playersPerTeam: players,
       maxWickets: effectiveMaxWickets,
       allowLastManStanding: lms,
@@ -154,9 +163,10 @@ class TournamentModel {
       ownerId: data['ownerId'] as String? ?? data['owner_id'] as String?,
       ownerEmail: data['ownerEmail'] as String? ?? data['owner_email'] as String?,
       branding: TournamentBranding.fromMap(data['branding'] as Map<String, dynamic>?),
-      venueName: data['venueName'] as String? ?? data['venue_name'] as String? ?? 'WASA Sports Complex',
+      venueName: data['venueName'] as String? ?? data['venue_name'] as String? ?? 'Cricket Ground',
       venueMapsUrl: data['venueMapsUrl'] as String? ?? data['venue_maps_url'] as String?,
       status: data['status'] as String? ?? 'LIVE',
+      playoffFormat: data['playoffFormat'] as String? ?? data['playoff_format'] as String? ?? 'PAGE_PLAYOFF_TOP3',
       winPoints: (data['winPoints'] as num?)?.toInt() ?? 2,
       tiePoints: (data['tiePoints'] as num?)?.toInt() ?? 1,
       noResultPoints: (data['noResultPoints'] as num?)?.toInt() ?? 1,
@@ -188,6 +198,7 @@ class TournamentModel {
       'venueName': venueName,
       if (venueMapsUrl != null) 'venueMapsUrl': venueMapsUrl,
       'status': status,
+      'playoffFormat': playoffFormat,
       'winPoints': winPoints,
       'tiePoints': tiePoints,
       'noResultPoints': noResultPoints,
@@ -218,6 +229,7 @@ class TournamentModel {
     String? venueName,
     String? venueMapsUrl,
     String? status,
+    String? playoffFormat,
     int? winPoints,
     int? tiePoints,
     int? noResultPoints,
@@ -244,6 +256,7 @@ class TournamentModel {
       venueName: venueName ?? this.venueName,
       venueMapsUrl: venueMapsUrl ?? this.venueMapsUrl,
       status: status ?? this.status,
+      playoffFormat: playoffFormat ?? this.playoffFormat,
       winPoints: winPoints ?? this.winPoints,
       tiePoints: tiePoints ?? this.tiePoints,
       noResultPoints: noResultPoints ?? this.noResultPoints,

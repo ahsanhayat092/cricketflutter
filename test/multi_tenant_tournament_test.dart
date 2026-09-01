@@ -8,18 +8,18 @@ void main() {
   group('Multi-Tenant TournamentModel Tests', () {
     test('TournamentModel defaults and backward compatibility with main', () {
       const defaultTournament = TournamentModel(
-        name: 'WASA Premier League 2026',
-        shortName: 'WPL 2026',
+        name: 'Cricket Tournament',
+        shortName: 'CRIC',
       );
 
       expect(defaultTournament.id, 'main');
-      expect(defaultTournament.slug, 'wasa-2026');
+      expect(defaultTournament.slug, 'cricket-tournament');
       expect(defaultTournament.formatType, 'TAPE_BALL_INDOOR');
       expect(defaultTournament.oversPerSide, 4);
       expect(defaultTournament.scorerPin, '1234');
       expect(defaultTournament.isPinValid('1234'), isTrue);
       expect(defaultTournament.isPinValid('0000'), isFalse);
-      expect(defaultTournament.shareUrl, 'https://wasacricket.vercel.app/t/wasa-2026');
+      expect(defaultTournament.shareUrl, 'https://pitchpe.vercel.app/t/cricket-tournament');
     });
 
     test('TournamentModel serialization and deserialization from Firestore Map', () {
@@ -54,7 +54,7 @@ void main() {
       expect(tournament.isPinValid('5678'), isTrue);
       expect(tournament.isPinValid(' 5678 '), isTrue);
       expect(tournament.isPinValid('1234'), isFalse);
-      expect(tournament.shareUrl, 'https://wasacricket.vercel.app/t/lahore-cup');
+      expect(tournament.shareUrl, 'https://pitchpe.vercel.app/t/lahore-cup');
 
       final serialized = tournament.toMap();
       expect(serialized['name'], 'Lahore Tapeball Championship');

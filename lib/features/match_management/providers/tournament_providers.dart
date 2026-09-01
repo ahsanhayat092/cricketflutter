@@ -69,18 +69,49 @@ final unlockedTournamentsProvider =
   return UnlockedTournamentsNotifier(securityService);
 });
 
-/// Helper to dynamically hydrate Playoff (Rank 2 vs Rank 3) and Final (Rank 1 vs Winner of Playoff / Rank 2)
+/// Helper to dynamically hydrate Playoff / Knockout and Final matches from Standings
 MatchModel hydrateMatchWithStandings(
   MatchModel match,
   List<StandingWithTeam> standings, {
   List<MatchModel>? allMatches,
+  String playoffFormat = 'PAGE_PLAYOFF_TOP3',
 }) {
   final stageEnum = MatchStageX.fromFirestoreString(match.stage);
 
-  // 1. PLAYOFF MATCH: Rank 2 vs Rank 3
-  if (stageEnum == MatchStage.playoff) {
-    if (standings.length < 3) return match;
+  // League matches don't need bracket hydration
+  if (stageEnum == MatchStage.league) return match;
 
+  // If allMatches is provided and has league matches, verify they are all completed
+  if (allMatches != null) {
+    final leagueMatches = allMatches
+        .where((m) => MatchStageX.fromFirestoreString(m.stage) == MatchStage.league)
+        .toList();
+    if (leagueMatches.isNotEmpty) {
+      final allLeagueDone = leagueMatches.every((m) => m.isCompleted);
+      if (!allLeagueDone) {
+        // League matches not 100% finished: keep placeholders
+        return match;
+      }
+    }
+  }
+
+  // 1. PLAYOFF / QUALIFIER / SEMI-FINAL MATCHES
+  if (stageEnum == MatchStage.playoff) {
+    final titleLower = (match.matchNumber.toString() + (match.venue)).toLowerCase();
+    final isSemiFinal = match.stage.toLowerCase().contains('semi') || titleLower.contains('semi');
+
+    if (isSemiFinal || playoffFormat == 'SEMI_FINALS') {
+      // Semi Final 1: Rank 1 vs Rank 4; Semi Final 2: Rank 2 vs Rank 3
+      final isSf1 = match.matchNumber % 2 == 1;
+      if (standings.length >= 4) {
+        final teamAId = isSf1 ? standings[0].standing.teamId : standings[1].standing.teamId;
+        final teamBId = isSf1 ? standings[3].standing.teamId : standings[2].standing.teamId;
+        return match.copyWith(teamAId: teamAId, teamBId: teamBId, stage: 'PLAYOFF');
+      }
+    }
+
+    // Default Page Playoff: Rank 2 vs Rank 3
+    if (standings.length < 3) return match;
     final rank2TeamId = standings[1].standing.teamId;
     final rank3TeamId = standings[2].standing.teamId;
 
@@ -106,13 +137,13 @@ MatchModel hydrateMatchWithStandings(
     return match;
   }
 
-  // 2. GRAND FINAL MATCH: Rank 1 vs Winner of Playoff (or Rank 2 if direct final)
+  // 2. GRAND FINAL MATCH
   if (stageEnum == MatchStage.finalMatch) {
     if (standings.isEmpty) return match;
 
     final rank1TeamId = standings[0].standing.teamId;
 
-    // Check if a playoff match exists and is completed
+    // Check if playoff matches exist and are completed
     String? playoffWinnerId;
     if (allMatches != null) {
       final playoffMatches = allMatches.where((m) =>
@@ -143,6 +174,9 @@ MatchModel hydrateMatchWithStandings(
     if (isTeamBUnset) {
       if (playoffWinnerId != null) {
         targetTeamB = playoffWinnerId;
+      } else if (playoffFormat == 'DIRECT_TOP2' && standings.length >= 2) {
+        // Direct Top 2 Final: Rank 1 vs Rank 2
+        targetTeamB = standings[1].standing.teamId;
       } else if (standings.length >= 2 &&
           (allMatches == null || !allMatches.any((m) => MatchStageX.fromFirestoreString(m.stage) == MatchStage.playoff))) {
         targetTeamB = standings[1].standing.teamId;

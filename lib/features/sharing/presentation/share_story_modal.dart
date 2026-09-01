@@ -135,20 +135,21 @@ class _ShareStoryModalState extends State<ShareStoryModal> {
   String _buildShareCaption() {
     final tA = widget.teamA.shortName;
     final tB = widget.teamB.shortName;
-    final verdict = widget.match.resultText ?? 'Live on WASA Premier League';
+    final verdict = widget.match.resultText ?? 'Live on PitchPe';
+    const tag = '#PitchPe #Cricket';
 
     switch (_selectedTemplate) {
       case StoryCardTemplate.matchResult:
-        return '🏆 $verdict!\n$tA vs $tB • WASA Premier League 2026 #WPL2026 #CricketStory';
+        return '🏆 $verdict!\n$tA vs $tB • Live on PitchPe $tag';
       case StoryCardTemplate.playerOfTheMatch:
         final name = _selectedPotm?.name ?? 'Hero of the match';
-        return '🌟 Player of the Match: $name!\n$tA vs $tB • WASA Premier League #POTM #WPL2026';
+        return '🌟 Player of the Match: $name!\n$tA vs $tB • PitchPe POTM $tag';
       case StoryCardTemplate.massiveSix:
-        return '🚀 MAXIMUM! Huge 6 in $tA vs $tB match! #WPL2026 #BigSix #CricketMoments';
+        return '🚀 MAXIMUM! Huge 6 in $tA vs $tB match! #BigSix $tag';
       case StoryCardTemplate.wicketFall:
-        return '⚡ TIMBER! Crucial wicket falls in $tA vs $tB! #WPL2026 #WicketMoment';
+        return '⚡ TIMBER! Crucial wicket falls in $tA vs $tB! #Wicket $tag';
       case StoryCardTemplate.matchOverview:
-        return '📊 Match Summary • $tA vs $tB • WASA Premier League 2026 #WPL2026';
+        return '📊 Match Summary • $tA vs $tB • PitchPe $tag';
     }
   }
 
