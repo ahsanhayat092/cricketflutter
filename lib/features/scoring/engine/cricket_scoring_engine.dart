@@ -252,11 +252,11 @@ class CricketScoringEngine {
       );
     }
 
-    final players = match.playersPerTeam > 0 ? match.playersPerTeam : AppConstants.playingSquadSize;
-    final isLmsEnabled = match.allowLastManStanding;
-    final maxWickets = match.maxWickets;
-    final lmsThreshold = maxWickets - 1;
-    final nthPlayer = players == 11 ? '11th' : (players == 6 ? '6th' : '${players}th');
+    final int playersPerTeam = match.playersPerTeam > 0 ? match.playersPerTeam : 11;
+    final bool allowLms = match.allowLastManStanding;
+    final int maxWickets = match.maxWickets;
+    final int lmsThreshold = playersPerTeam - 1;
+    final String nthPlayer = playersPerTeam == 11 ? '11th' : (playersPerTeam == 6 ? '6th' : '${playersPerTeam}th');
 
     // 1. Process Extras & Delivery Legality
     int deliveryTotalRuns = 0;
@@ -369,7 +369,7 @@ class CricketScoringEngine {
           battingOrder: updatedBattingScores.length + 1,
         );
 
-        if (isLmsEnabled && currentWickets == lmsThreshold) {
+        if (allowLms && currentWickets == lmsThreshold && currentWickets < maxWickets) {
           // Last Man Standing: Lone batsman bats alone
           newStrikerId = newBatterId;
           newNonStrikerId = newBatterId;
@@ -382,7 +382,7 @@ class CricketScoringEngine {
             newNonStrikerId = newBatterId;
           }
         }
-      } else if (isLmsEnabled && currentWickets == lmsThreshold) {
+      } else if (allowLms && currentWickets == lmsThreshold && currentWickets < maxWickets) {
         // Last Man Standing fell into place and remaining player is already active
         final remainingBatter = updatedBattingScores.values.where((b) => !b.isOut).firstOrNull;
         if (remainingBatter != null) {
