@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'match_rules_model.dart';
 
@@ -164,17 +165,41 @@ class MatchModel {
   int get maxOvers => isFinal ? 5 : (rules.oversPerSide > 0 ? rules.oversPerSide : (oversPerSide > 0 ? oversPerSide : 4));
   int get maxBalls => maxOvers * 6;
 
+  /// Dynamic Squad Size:
+  /// Prioritizes actual lineup size (teamAPlayingVI / teamBPlayingVI), then rules, then format defaults.
+  int get playersPerTeam {
+    final lineupCount = math.max(teamAPlayingVI.length, teamBPlayingVI.length);
+    if (lineupCount > 0) return lineupCount;
+    if (rules.hasExplicitPlayersPerTeam && rules.playersPerTeam > 0) return rules.playersPerTeam;
+    if (oversPerSide >= 10 || rules.oversPerSide >= 10) return 11;
+    return rules.playersPerTeam > 0 ? rules.playersPerTeam : 11;
+  }
+
+  /// Dynamic Last Man Standing Flag:
+  /// For 10+ player matches (T20, T10, ODI, standard cricket), LMS is disabled (false)
+  /// unless explicitly enabled with maxWickets >= playersPerTeam.
+  bool get allowLastManStanding {
+    if (playersPerTeam >= 10) {
+      return rules.allowLastManStanding && rules.maxWickets >= playersPerTeam;
+    }
+    return rules.allowLastManStanding;
+  }
+
   /// Dynamic Max Wickets Calculation:
-  /// - If explicitly set in rules (> 0), use that value.
-  /// - If allowLastManStanding is true, maxWickets = playersPerTeam (all players bat, e.g. 6 for 6-a-side).
-  /// - If allowLastManStanding is false, maxWickets = playersPerTeam - 1 (e.g. 5 for 6-a-side, 10 for 11-a-side).
-  int get maxWickets => rules.maxWickets > 0
-      ? rules.maxWickets
-      : (rules.allowLastManStanding
-          ? rules.playersPerTeam
-          : (rules.playersPerTeam > 1 ? rules.playersPerTeam - 1 : 1));
-  bool get allowLastManStanding => rules.allowLastManStanding;
-  int get playersPerTeam => rules.playersPerTeam;
+  /// - If allowLastManStanding is true: maxWickets = playersPerTeam (e.g. 6 for 6-a-side LMS, 11 for 11-a-side LMS).
+  /// - If allowLastManStanding is false: maxWickets = playersPerTeam - 1 (e.g. 10 for 11-a-side, 5 for 6-a-side standard).
+  int get maxWickets {
+    final n = playersPerTeam;
+    final lms = allowLastManStanding;
+    if (rules.maxWickets > 0) {
+      // Guard against stale legacy 5 or 6 maxWickets in 10/11-player matches
+      if (n >= 10 && rules.maxWickets <= 6) {
+        return lms ? n : (n > 1 ? n - 1 : 1);
+      }
+      return rules.maxWickets;
+    }
+    return lms ? n : (n > 1 ? n - 1 : 1);
+  }
 
   factory MatchModel.fromMap(String id, Map<String, dynamic>? data) {
     if (data == null) {
@@ -197,13 +222,34 @@ class MatchModel {
         ? 20
         : (formatType == 'T10' ? 10 : (isFinalStage ? 5 : 4));
 
-    final parsedRules = rawRules != null
-        ? MatchRulesModel.fromMap(rawRules)
-        : MatchRulesModel.fromMap({
-            ...data,
-            'formatType': formatType,
-            'oversPerSide': data['oversPerSide'] ?? data['overs_per_side'] ?? defaultOvers,
-          });
+    final teamAPlayers = (data['teamAPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['team_a_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['teamAPlayingXI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['team_a_playing_xi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['teamAPlayingSquad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['team_a_playing_squad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        [];
+    final teamBPlayers = (data['teamBPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['team_b_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['teamBPlayingXI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['team_b_playing_xi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['teamBPlayingSquad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        (data['team_b_playing_squad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+        [];
+
+    final actualSquadSize = math.max(teamAPlayers.length, teamBPlayers.length);
+
+    final mergedRulesData = {
+      ...data,
+      if (rawRules != null) ...rawRules,
+      'formatType': formatType,
+      'oversPerSide': data['oversPerSide'] ?? data['overs_per_side'] ?? rawRules?['oversPerSide'] ?? defaultOvers,
+      if (actualSquadSize > 0) 'playersPerTeam': actualSquadSize,
+      if (actualSquadSize >= 10 || defaultOvers >= 10 || formatType == 'T20' || formatType == 'T10' || formatType == 'ODI')
+        'allowLastManStanding': false,
+    };
+
+    final parsedRules = MatchRulesModel.fromMap(mergedRulesData);
 
     return MatchModel(
       id: id,
@@ -227,7 +273,7 @@ class MatchModel {
           '',
       date: (data['date'] as String?) ?? '',
       time: (data['time'] as String?) ?? '14:00',
-      venue: (data['venue'] as String?) ?? 'WASA Sports Complex',
+      venue: (data['venue'] as String?) ?? 'Cricket Ground',
       oversPerSide: (data['oversPerSide'] as num?)?.toInt() ??
           (data['overs_per_side'] as num?)?.toInt() ??
           (data['maxOvers'] as num?)?.toInt() ??
@@ -238,23 +284,11 @@ class MatchModel {
       winningTeamId: (data['winningTeamId'] as String?) ?? (data['winning_team_id'] as String?),
       resultText: (data['resultText'] as String?) ?? (data['result_text'] as String?),
       playerOfMatchId: (data['playerOfMatchId'] as String?) ?? (data['player_of_match_id'] as String?),
-      teamAPlayingVI: (data['teamAPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['team_a_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['teamAPlayingXI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['team_a_playing_xi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['teamAPlayingSquad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['team_a_playing_squad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          [],
+      teamAPlayingVI: teamAPlayers,
       teamAReserveId: (data['teamAReserveId'] as String?) ??
           (data['team_a_reserve_id'] as String?) ??
           (data['teamAReserve'] as String?),
-      teamBPlayingVI: (data['teamBPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['team_b_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['teamBPlayingXI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['team_b_playing_xi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['teamBPlayingSquad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          (data['team_b_playing_squad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-          [],
+      teamBPlayingVI: teamBPlayers,
       teamBReserveId: (data['teamBReserveId'] as String?) ??
           (data['team_b_reserve_id'] as String?) ??
           (data['teamBReserve'] as String?),

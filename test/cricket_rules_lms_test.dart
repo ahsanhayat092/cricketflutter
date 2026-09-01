@@ -280,5 +280,59 @@ void main() {
       expect(result6thWicket.innings.completed, isTrue, reason: 'Innings should complete at 6 wickets (all out)');
       expect(result6thWicket.innings.allOut, isTrue);
     });
+
+    test('Match with 11 players in lineup and 10 overs does NOT finish or trigger LMS on 6th wicket', () {
+      final elevenPlayerIds = List.generate(11, (i) => 'player_$i');
+      final matchDoc = MatchModel.fromMap('match_7', {
+        'matchNumber': 7,
+        'oversPerSide': 10,
+        'teamAPlayingVI': elevenPlayerIds,
+        'teamBPlayingVI': elevenPlayerIds,
+        'rules': {
+          'allowLastManStanding': true, // Stale default in Firestore
+          'maxWickets': 6, // Stale default in Firestore
+        },
+      });
+
+      expect(matchDoc.playersPerTeam, equals(11));
+      expect(matchDoc.allowLastManStanding, isFalse);
+      expect(matchDoc.maxWickets, equals(10));
+
+      final inningsAt5 = InningsModel(
+        id: 'inn_m7_1',
+        matchId: 'match_7',
+        inningsNumber: 1,
+        battingTeamId: 'team_a',
+        bowlingTeamId: 'team_b',
+        wickets: 5,
+        balls: 5,
+        runs: 0,
+      );
+
+      // 6th wicket falls
+      final result6th = CricketScoringEngine.processDelivery(
+        match: matchDoc,
+        innings: inningsAt5,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: {},
+        strikerId: 'player_5',
+        nonStrikerId: 'player_6',
+        bowlerId: 'bowler_1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(
+          runsOffBat: 0,
+          isWicket: true,
+          wicketType: WicketType.bowled,
+          newBatsmanId: 'player_7',
+        ),
+      );
+
+      expect(result6th.innings.wickets, equals(6));
+      expect(result6th.innings.completed, isFalse, reason: '11-player match must not end on 6th wicket');
+      expect(result6th.innings.allOut, isFalse);
+      expect(result6th.strikerId, equals('player_6'), reason: 'Over ended on ball 6, rotating strike');
+      expect(result6th.nonStrikerId, equals('player_7'));
+    });
   });
 }
