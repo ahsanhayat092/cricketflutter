@@ -23,6 +23,9 @@ class OfflineSyncManager extends ChangeNotifier {
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   SyncStatus _status = SyncStatus.synced;
   String? _lastError;
+  String? _lastErrorStackTrace;
+  String? _lastFailedActionInfo;
+  DateTime? _lastErrorTime;
   int _pendingCount = 0;
   DateTime? _lastSyncTime;
   bool _isDisposed = false;
@@ -41,6 +44,9 @@ class OfflineSyncManager extends ChangeNotifier {
 
   SyncStatus get status => _status;
   String? get lastError => _lastError;
+  String? get lastErrorStackTrace => _lastErrorStackTrace;
+  String? get lastFailedActionInfo => _lastFailedActionInfo;
+  DateTime? get lastErrorTime => _lastErrorTime;
   int get pendingCount => _pendingCount;
   DateTime? get lastSyncTime => _lastSyncTime;
 
@@ -157,6 +163,10 @@ class OfflineSyncManager extends ChangeNotifier {
         action.retryCount += 1;
         await _storage.updateSyncAction(action);
 
+        _lastError = e.toString();
+        _lastErrorStackTrace = stack.toString();
+        _lastFailedActionInfo = 'Action: ${action.type.name} (ID: ${action.id}, Match: ${action.matchId}, Retries: ${action.retryCount})';
+        _lastErrorTime = DateTime.now();
         _updateStatus(SyncStatus.error, e.toString());
         _scheduleRetry();
         return;
@@ -171,8 +181,22 @@ class OfflineSyncManager extends ChangeNotifier {
     }
 
     _pendingCount = 0;
+    _lastError = null;
+    _lastErrorStackTrace = null;
+    _lastFailedActionInfo = null;
     _updateStatus(SyncStatus.synced);
     debugPrint('[OfflineSyncManager] All pending actions successfully synced.');
+  }
+
+  /// Clears all pending mutations from local offline queue
+  Future<void> clearPendingQueue({String? matchId}) async {
+    await _storage.clearAllSyncActions(matchId: matchId);
+    await _refreshPendingCount();
+    _lastError = null;
+    _lastErrorStackTrace = null;
+    _lastFailedActionInfo = null;
+    _updateStatus(SyncStatus.synced);
+    notifyListeners();
   }
 
   void _scheduleRetry() {

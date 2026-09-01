@@ -567,7 +567,9 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
           // 3. Playing Squads Preview
           if (teamAPlayers.isNotEmpty || teamBPlayers.isNotEmpty) ...[
             Text(
-              'ANNOUNCED PLAYING VI',
+              match.playersPerTeam == 11
+                  ? 'ANNOUNCED PLAYING XI'
+                  : (match.playersPerTeam == 6 ? 'ANNOUNCED PLAYING VI' : 'ANNOUNCED PLAYING ${match.playersPerTeam}'),
               style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w900, letterSpacing: 1.0, color: AppColors.textSecondary),
             ),
             const SizedBox(height: 10),

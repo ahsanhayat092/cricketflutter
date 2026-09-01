@@ -252,8 +252,12 @@ class CricketScoringEngine {
       );
     }
 
-    final maxWickets = rules.maxWickets > 0 ? rules.maxWickets : AppConstants.maxWicketsPerInnings;
+    final explicitMaxWickets = rules.maxWickets;
+    final players = rules.playersPerTeam > 0 ? rules.playersPerTeam : AppConstants.playingSquadSize;
     final isLmsEnabled = rules.allowLastManStanding;
+    final maxWickets = explicitMaxWickets > 0
+        ? explicitMaxWickets
+        : (isLmsEnabled ? players : (players > 1 ? players - 1 : 1));
     final lmsThreshold = maxWickets - 1;
 
     // 1. Process Extras & Delivery Legality

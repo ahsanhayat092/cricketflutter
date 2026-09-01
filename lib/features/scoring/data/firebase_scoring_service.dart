@@ -231,12 +231,30 @@ class FirebaseScoringService {
         debugPrint('[FirebaseScoringService] Error streaming accepted team memberships: $e');
       }
 
-      final allTeamsMap = <String, TeamModel>{};
-      for (final t in [...directTeams, ...membershipTeams]) {
-        allTeamsMap[t.id] = t;
-      }
-      return allTeamsMap.values.toList();
+      return deduplicateTeams(directTeams, membershipTeams);
     });
+  }
+
+  /// Deduplicate teams by both `id` AND normalized `name`.
+  /// Prioritizes direct tournament team documents over membership fallback records.
+  static List<TeamModel> deduplicateTeams(List<TeamModel> directTeams, List<TeamModel> membershipTeams) {
+    final combined = [...directTeams, ...membershipTeams];
+    final Map<String, TeamModel> uniqueById = {};
+    final Map<String, TeamModel> uniqueByName = {};
+
+    for (final team in combined) {
+      final cleanName = team.name.trim().toLowerCase();
+
+      // Only add if neither the ID nor the team name has already been encountered
+      if (!uniqueById.containsKey(team.id) && !uniqueByName.containsKey(cleanName)) {
+        uniqueById[team.id] = team;
+        if (cleanName.isNotEmpty) {
+          uniqueByName[cleanName] = team;
+        }
+      }
+    }
+
+    return uniqueById.values.toList();
   }
 
   /// Fetch all teams once (both direct and accepted invite memberships)
@@ -315,11 +333,7 @@ class FirebaseScoringService {
       debugPrint('[FirebaseScoringService] Error fetching accepted team memberships: $e');
     }
 
-    final allTeamsMap = <String, TeamModel>{};
-    for (final t in [...directTeams, ...membershipTeams]) {
-      allTeamsMap[t.id] = t;
-    }
-    return allTeamsMap.values.toList();
+    return deduplicateTeams(directTeams, membershipTeams);
   }
 
   /// Fetch single team

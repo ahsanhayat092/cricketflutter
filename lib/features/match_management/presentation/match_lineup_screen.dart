@@ -62,20 +62,33 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     super.dispose();
   }
 
-  void _togglePlayer(String teamId, String teamAId, String playerId) {
+  String _getSquadTitle(int size) {
+    if (size == 11) return 'Playing XI';
+    if (size == 6) return 'Playing VI';
+    return 'Playing $size';
+  }
+
+  String _getSquadHeader(int size) {
+    if (size == 11) return 'PLAYING XI';
+    if (size == 6) return 'PLAYING VI';
+    return 'PLAYING $size';
+  }
+
+  void _togglePlayer(String teamId, String teamAId, String playerId, int targetSquadSize) {
     setState(() {
       final isTeamA = teamId == teamAId;
       final playingSet = isTeamA ? _teamAPlayingVI : _teamBPlayingVI;
+      final squadTitle = _getSquadTitle(targetSquadSize);
 
       if (playingSet.contains(playerId)) {
         playingSet.remove(playerId);
       } else {
-        if (playingSet.length < AppConstants.playingSquadSize) {
+        if (playingSet.length < targetSquadSize) {
           playingSet.add(playerId);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Playing VI already full (6 players max). Select Reserve below.'),
+            SnackBar(
+              content: Text('$squadTitle already full ($targetSquadSize players max). Select Reserve below.'),
               behavior: SnackBarBehavior.floating,
               backgroundColor: AppColors.cardBackground,
             ),
@@ -100,7 +113,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     }
   }
 
-  void _openQuickAddPlayerBottomSheet(TeamModel team) {
+  void _openQuickAddPlayerBottomSheet(TeamModel team, int targetSquadSize) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -112,8 +125,8 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
           setState(() {
             final isTeamA = team.id == widget.match.teamAId;
             final targetSet = isTeamA ? _teamAPlayingVI : _teamBPlayingVI;
-            // Auto-select into playing VI if slots are available (< 6)
-            if (targetSet.length < AppConstants.playingSquadSize) {
+            // Auto-select into playing squad if slots are available
+            if (targetSet.length < targetSquadSize) {
               targetSet.add(newPlayerId);
             }
           });
@@ -122,12 +135,17 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     );
   }
 
-  Future<void> _saveAndProceedToScoring(List<PlayerModel> teamAPlayers, List<PlayerModel> teamBPlayers) async {
-    if (_teamAPlayingVI.length != AppConstants.playingSquadSize ||
-        _teamBPlayingVI.length != AppConstants.playingSquadSize) {
+  Future<void> _saveAndProceedToScoring(
+    List<PlayerModel> teamAPlayers,
+    List<PlayerModel> teamBPlayers,
+    int targetSquadSize,
+  ) async {
+    final squadTitle = _getSquadTitle(targetSquadSize);
+    if (_teamAPlayingVI.length != targetSquadSize ||
+        _teamBPlayingVI.length != targetSquadSize) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please select exactly 6 Playing VI for BOTH teams.'),
+        SnackBar(
+          content: Text('Please select exactly $targetSquadSize starters ($squadTitle) for BOTH teams.'),
           backgroundColor: AppColors.wicket,
           behavior: SnackBarBehavior.floating,
         ),
@@ -386,6 +404,17 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     final currentMatch = hydrateMatchWithStandings(widget.match, standings);
 
     final activeMatchTourId = currentMatch.tournamentId.isNotEmpty ? currentMatch.tournamentId : activeId;
+    final allTournamentsAsync = ref.watch(allTournamentsProvider);
+    final tournament = allTournamentsAsync.value?.cast<TournamentModel?>().firstWhere(
+          (t) => t?.id == activeMatchTourId,
+          orElse: () => ref.watch(activeTournamentProvider).value,
+        ) ?? ref.watch(activeTournamentProvider).value;
+
+    final targetSquadSize = (currentMatch.rules.hasExplicitPlayersPerTeam ? currentMatch.rules.playersPerTeam : null)
+        ?? (tournament?.playersPerTeam != null && tournament!.playersPerTeam > 0 ? tournament.playersPerTeam : null)
+        ?? currentMatch.rules.playersPerTeam;
+    final squadTitle = _getSquadTitle(targetSquadSize);
+
     final allTeams = ref.watch(tournamentTeamsProvider(activeMatchTourId)).value ?? [];
     final teamMap = {for (var t in allTeams) t.id: t};
 
@@ -405,16 +434,16 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
 
     // Auto-fill squads once loaded if not set yet
     if (_teamAPlayingVI.isEmpty && teamAPlayers.isNotEmpty) {
-      _teamAPlayingVI = teamAPlayers.take(6).map((p) => p.id).toSet();
-      if (teamAPlayers.length > 6) _teamAReserveId = teamAPlayers[6].id;
+      _teamAPlayingVI = teamAPlayers.take(targetSquadSize).map((p) => p.id).toSet();
+      if (teamAPlayers.length > targetSquadSize) _teamAReserveId = teamAPlayers[targetSquadSize].id;
     }
     if (_teamBPlayingVI.isEmpty && teamBPlayers.isNotEmpty) {
-      _teamBPlayingVI = teamBPlayers.take(6).map((p) => p.id).toSet();
-      if (teamBPlayers.length > 6) _teamBReserveId = teamBPlayers[6].id;
+      _teamBPlayingVI = teamBPlayers.take(targetSquadSize).map((p) => p.id).toSet();
+      if (teamBPlayers.length > targetSquadSize) _teamBReserveId = teamBPlayers[targetSquadSize].id;
     }
 
-    final isTeamAReady = _teamAPlayingVI.length == AppConstants.playingSquadSize;
-    final isTeamBReady = _teamBPlayingVI.length == AppConstants.playingSquadSize;
+    final isTeamAReady = _teamAPlayingVI.length == targetSquadSize;
+    final isTeamBReady = _teamBPlayingVI.length == targetSquadSize;
     final isTossReady = _tossWinnerId != null && _tossDecision != null;
 
     return Scaffold(
@@ -427,8 +456,8 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
           unselectedLabelColor: AppColors.textMuted,
           labelStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 14),
           tabs: [
-            Tab(text: '${teamA.shortName} (${_teamAPlayingVI.length}/6)'),
-            Tab(text: '${teamB.shortName} (${_teamBPlayingVI.length}/6)'),
+            Tab(text: '${teamA.shortName} (${_teamAPlayingVI.length}/$targetSquadSize)'),
+            Tab(text: '${teamB.shortName} (${_teamBPlayingVI.length}/$targetSquadSize)'),
           ],
         ),
       ),
@@ -448,10 +477,11 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                       'TOSS STATUS',
                       style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textMuted),
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       isTossReady
-                          ? '${_tossWinnerId == teamA.id ? teamA.shortName : teamB.shortName} won & elected to $_tossDecision'
-                          : 'Toss Pending',
+                          ? '📢 ${_tossWinnerId == teamA.id ? teamA.name : teamB.name} elected to $_tossDecision first'
+                          : '⚠️ Toss has not been conducted yet',
                       style: GoogleFonts.outfit(
                         fontSize: 13,
                         fontWeight: FontWeight.bold,
@@ -479,12 +509,28 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _buildSquadTab(teamA, teamAPlayersAsync, _teamAPlayingVI, _teamAReserveId, teamA.id, (resId) {
-                  setState(() => _teamAReserveId = resId);
-                }),
-                _buildSquadTab(teamB, teamBPlayersAsync, _teamBPlayingVI, _teamBReserveId, teamA.id, (resId) {
-                  setState(() => _teamBReserveId = resId);
-                }),
+                _buildSquadTab(
+                  team: teamA,
+                  playersAsync: teamAPlayersAsync,
+                  playingVI: _teamAPlayingVI,
+                  reserveId: _teamAReserveId,
+                  teamAId: teamA.id,
+                  targetSquadSize: targetSquadSize,
+                  onReserveChanged: (resId) {
+                    setState(() => _teamAReserveId = resId);
+                  },
+                ),
+                _buildSquadTab(
+                  team: teamB,
+                  playersAsync: teamBPlayersAsync,
+                  playingVI: _teamBPlayingVI,
+                  reserveId: _teamBReserveId,
+                  teamAId: teamA.id,
+                  targetSquadSize: targetSquadSize,
+                  onReserveChanged: (resId) {
+                    setState(() => _teamBReserveId = resId);
+                  },
+                ),
               ],
             ),
           ),
@@ -508,7 +554,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
               ),
               onPressed: (_isStartingMatch || !(isTeamAReady && isTeamBReady && isTossReady))
                   ? null
-                  : () => _saveAndProceedToScoring(teamAPlayers, teamBPlayers),
+                  : () => _saveAndProceedToScoring(teamAPlayers, teamBPlayers, targetSquadSize),
               child: _isStartingMatch
                   ? const SizedBox(
                       height: 20,
@@ -516,7 +562,9 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
                     )
                   : Text(
-                      'START MATCH & SCORE LIVE',
+                      !isTeamAReady || !isTeamBReady
+                          ? 'SELECT $targetSquadSize STARTERS FOR BOTH TEAMS'
+                          : (!isTossReady ? 'CONDUCT TOSS TO START' : 'START MATCH & SCORE LIVE'),
                       style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 14),
                     ),
             ),
@@ -526,14 +574,17 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     );
   }
 
-  Widget _buildSquadTab(
-    TeamModel team,
-    AsyncValue<List<PlayerModel>> playersAsync,
-    Set<String> playingVI,
-    String? reserveId,
-    String teamAId,
-    ValueChanged<String?> onReserveChanged,
-  ) {
+  Widget _buildSquadTab({
+    required TeamModel team,
+    required AsyncValue<List<PlayerModel>> playersAsync,
+    required Set<String> playingVI,
+    required String? reserveId,
+    required String teamAId,
+    required int targetSquadSize,
+    required ValueChanged<String?> onReserveChanged,
+  }) {
+    final squadHeader = _getSquadHeader(targetSquadSize);
+
     return playersAsync.when(
       loading: () => Center(
         child: Column(
@@ -604,7 +655,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                         ),
                         icon: const Icon(Icons.person_add_alt_1_rounded),
                         label: const Text('ADD PLAYER'),
-                        onPressed: () => _openQuickAddPlayerBottomSheet(team),
+                        onPressed: () => _openQuickAddPlayerBottomSheet(team, targetSquadSize),
                       ),
                       const SizedBox(width: 10),
                       OutlinedButton.icon(
@@ -624,7 +675,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Playing VI Section Header with "+ Add Player" Button
+            // Playing Squad Section Header with "+ Add Player" Button
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -632,22 +683,22 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'SELECT STARTING 6 (PLAYING VI)',
+                      'SELECT STARTING $targetSquadSize ($squadHeader)',
                       style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.w900, color: AppColors.accent),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${playingVI.length} / 6 Starters Selected',
+                      '${playingVI.length} / $targetSquadSize Starters Selected',
                       style: GoogleFonts.outfit(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: playingVI.length == 6 ? AppColors.accent : AppColors.wicket,
+                        color: playingVI.length == targetSquadSize ? AppColors.accent : AppColors.wicket,
                       ),
                     ),
                   ],
                 ),
                 OutlinedButton.icon(
-                  onPressed: () => _openQuickAddPlayerBottomSheet(team),
+                  onPressed: () => _openQuickAddPlayerBottomSheet(team, targetSquadSize),
                   icon: const Icon(Icons.person_add_alt_1_rounded, size: 14),
                   label: Text('Add Player', style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold)),
                   style: OutlinedButton.styleFrom(
@@ -705,7 +756,7 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
                     value: isSelected,
                     activeColor: AppColors.accent,
                     checkColor: Colors.black,
-                    onChanged: isReserve ? null : (_) => _togglePlayer(team.id, teamAId, player.id),
+                    onChanged: isReserve ? null : (_) => _togglePlayer(team.id, teamAId, player.id, targetSquadSize),
                   ),
                 ),
               );

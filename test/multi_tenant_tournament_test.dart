@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wpl_cricket_app/features/scoring/models/tournament_model.dart';
+import 'package:wpl_cricket_app/features/scoring/models/team_model.dart';
+import 'package:wpl_cricket_app/features/scoring/data/firebase_scoring_service.dart';
 import 'package:wpl_cricket_app/features/auth/models/tournament_member_model.dart';
 
 void main() {
@@ -114,6 +116,63 @@ void main() {
       expect(TournamentRoleX.fromFirestoreString('ADMIN'), TournamentRole.admin);
       expect(TournamentRoleX.fromFirestoreString('SCORER'), TournamentRole.scorer);
       expect(TournamentRoleX.fromFirestoreString(null), TournamentRole.scorer);
+    });
+  });
+
+  group('Team Deduplication Tests', () {
+    test('deduplicateTeams eliminates duplicates by both ID and normalized Name', () {
+      final directTeams = [
+        const TeamModel(
+          id: 'direct_team_1',
+          tournamentId: 't1',
+          name: 'Avengers XI',
+          shortName: 'AVG',
+        ),
+        const TeamModel(
+          id: 'direct_team_2',
+          tournamentId: 't1',
+          name: 'Stallions Cricket Club',
+          shortName: 'SCC',
+        ),
+      ];
+
+      final membershipTeams = [
+        // Duplicate by normalized name with different ID (membership record fallback)
+        const TeamModel(
+          id: 'membership_team_mem123',
+          tournamentId: 't1',
+          name: '  avengers xi  ',
+          shortName: 'AVG',
+        ),
+        // Duplicate by exact ID
+        const TeamModel(
+          id: 'direct_team_2',
+          tournamentId: 't1',
+          name: 'Stallions Cricket Club',
+          shortName: 'SCC',
+        ),
+        // Unique new team
+        const TeamModel(
+          id: 'membership_team_3',
+          tournamentId: 't1',
+          name: 'Lions CC',
+          shortName: 'LCC',
+        ),
+      ];
+
+      final deduplicated = FirebaseScoringService.deduplicateTeams(directTeams, membershipTeams);
+
+      expect(deduplicated.length, 3);
+      expect(deduplicated.map((t) => t.id).toList(), [
+        'direct_team_1',
+        'direct_team_2',
+        'membership_team_3',
+      ]);
+      expect(deduplicated.map((t) => t.name).toList(), [
+        'Avengers XI',
+        'Stallions Cricket Club',
+        'Lions CC',
+      ]);
     });
   });
 }

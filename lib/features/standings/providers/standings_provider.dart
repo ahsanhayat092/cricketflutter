@@ -18,14 +18,18 @@ final standingsStreamProvider = StreamProvider<List<StandingWithTeam>>((ref) {
       .asyncMap((standingsSnap) async {
     // 1. Get the authoritative list of participating teams for this tournament
     final List<TeamModel> tournamentTeams = await service.getTeams(tournamentId: activeTournamentId);
-    final Map<String, TeamModel> teamsMap = {
+    final Map<String, TeamModel> teamsById = {
       for (final team in tournamentTeams) team.id: team,
     };
-    final Set<String> validTeamIds = teamsMap.keys.toSet();
+    final Map<String, TeamModel> teamsByName = {
+      for (final team in tournamentTeams)
+        if (team.name.trim().isNotEmpty) team.name.trim().toLowerCase(): team,
+    };
 
     // 2. Filter standings strictly to documents belonging to actual tournament teams
     final List<StandingWithTeam> list = [];
     final Set<String> processedTeamIds = {};
+    final Set<String> processedTeamNames = {};
 
     for (final doc in standingsSnap.docs) {
       final standing = StandingModel.fromFirestore(doc);
@@ -37,29 +41,39 @@ final standingsStreamProvider = StreamProvider<List<StandingWithTeam>>((ref) {
 
       if (!isMatchingTournament) continue;
 
-      // CRITICAL: Exclude orphan/phantom standing records not in this tournament's team roster
-      final matchedTeamId = validTeamIds.contains(standing.teamId)
-          ? standing.teamId
-          : (validTeamIds.contains(standing.id) ? standing.id : null);
+      // Match to tournament team by teamId, doc id, or team name
+      final standingTeamName = standing.teamName?.trim().toLowerCase();
+      final team = teamsById[standing.teamId] ??
+                   teamsById[standing.id] ??
+                   (standingTeamName != null && standingTeamName.isNotEmpty ? teamsByName[standingTeamName] : null);
 
-      if (matchedTeamId == null) {
-        // This is a phantom/orphan standing doc for a non-participating team — discard it!
+      if (team == null) {
+        // Exclude orphan/phantom standing records not in this tournament's team roster
         continue;
       }
 
-      final team = teamsMap[matchedTeamId];
-      if (team != null) {
-        list.add(StandingWithTeam(
-          standing: standing,
-          team: team,
-        ));
-        processedTeamIds.add(matchedTeamId);
+      final cleanTeamName = team.name.trim().toLowerCase();
+      if (processedTeamIds.contains(team.id) ||
+          (cleanTeamName.isNotEmpty && processedTeamNames.contains(cleanTeamName))) {
+        // Already processed this team! Avoid duplicate row in points table
+        continue;
+      }
+
+      list.add(StandingWithTeam(
+        standing: standing.copyWith(teamId: team.id),
+        team: team,
+      ));
+      processedTeamIds.add(team.id);
+      if (cleanTeamName.isNotEmpty) {
+        processedTeamNames.add(cleanTeamName);
       }
     }
 
     // 3. For any participating tournament team that does not have a standings doc yet, create default 0-0 entry
     for (final team in tournamentTeams) {
-      if (!processedTeamIds.contains(team.id)) {
+      final cleanTeamName = team.name.trim().toLowerCase();
+      if (!processedTeamIds.contains(team.id) &&
+          (cleanTeamName.isEmpty || !processedTeamNames.contains(cleanTeamName))) {
         list.add(StandingWithTeam(
           standing: StandingModel(
             id: team.id,
@@ -69,6 +83,10 @@ final standingsStreamProvider = StreamProvider<List<StandingWithTeam>>((ref) {
           ),
           team: team,
         ));
+        processedTeamIds.add(team.id);
+        if (cleanTeamName.isNotEmpty) {
+          processedTeamNames.add(cleanTeamName);
+        }
       }
     }
 

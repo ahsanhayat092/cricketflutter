@@ -398,6 +398,10 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
     TeamModel teamB,
     Map<String, PlayerModel> playerMap,
   ) {
+    final squadLabel = match.playersPerTeam == 11
+        ? 'Playing XI'
+        : (match.playersPerTeam == 6 ? 'Playing VI' : 'Playing ${match.playersPerTeam}');
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -408,7 +412,7 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
             _buildInfoRow('Match', '${match.stage} Match ${match.matchNumber}'),
             _buildInfoRow('Date & Time', '${match.date} at ${match.time}'),
             _buildInfoRow('Venue', match.venue),
-            _buildInfoRow('Format', '${match.maxOvers} Overs per side • 6 Players + 1 Reserve'),
+            _buildInfoRow('Format', '${match.maxOvers} Overs per side • ${match.playersPerTeam} Players + 1 Reserve'),
             if (match.tossWinnerId != null)
               _buildInfoRow(
                 'Toss',
@@ -419,7 +423,7 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
           const SizedBox(height: 16),
 
           // Team Squads
-          _buildInfoCard('${teamA.name} Playing VI', [
+          _buildInfoCard('${teamA.name} $squadLabel', [
             for (var pid in match.teamAPlayingVI)
               _buildPlayerRow(playerMap[pid] ?? PlayerModel(id: pid, teamId: teamA.id, name: 'Player $pid')),
             if (match.teamAReserveId != null)
@@ -430,7 +434,7 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
           ]),
           const SizedBox(height: 16),
 
-          _buildInfoCard('${teamB.name} Playing VI', [
+          _buildInfoCard('${teamB.name} $squadLabel', [
             for (var pid in match.teamBPlayingVI)
               _buildPlayerRow(playerMap[pid] ?? PlayerModel(id: pid, teamId: teamB.id, name: 'Player $pid')),
             if (match.teamBReserveId != null)

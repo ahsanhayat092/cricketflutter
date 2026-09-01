@@ -104,23 +104,57 @@ class TournamentModel {
         slug: 'wasa-2026',
       );
     }
+    final formatType = data['formatType'] as String? ?? 'TAPE_BALL_INDOOR';
+    final overs = (data['oversPerSide'] as num?)?.toInt() ??
+        (data['overs_per_side'] as num?)?.toInt() ??
+        (data['overs'] as num?)?.toInt() ??
+        (data['maxOvers'] as num?)?.toInt() ??
+        (formatType == 'T20' ? 20 : (formatType == 'T10' ? 10 : 4));
+
+    final defaultPlayers = (formatType == 'T20' || formatType == 'T10' || formatType == 'ODI' || formatType == 'TEST') ? 11 : 6;
+    final players = (data['playersPerTeam'] as num?)?.toInt() ??
+        (data['players_per_team'] as num?)?.toInt() ??
+        (data['players'] as num?)?.toInt() ??
+        (data['teamSize'] as num?)?.toInt() ??
+        (data['team_size'] as num?)?.toInt() ??
+        (data['squadSize'] as num?)?.toInt() ??
+        (data['squad_size'] as num?)?.toInt() ??
+        (data['playingSquadSize'] as num?)?.toInt() ??
+        (data['playing_squad_size'] as num?)?.toInt() ??
+        (data['totalPlayers'] as num?)?.toInt() ??
+        defaultPlayers;
+
+    final lms = data['allowLastManStanding'] as bool? ??
+        (data['allow_last_man_standing'] as bool?) ??
+        (formatType == 'T20' || formatType == 'ODI' || formatType == 'TEST'
+            ? false
+            : (players <= 8 || overs <= 8));
+
+    final explicitMaxWickets = (data['maxWickets'] as num?)?.toInt() ??
+        (data['max_wickets'] as num?)?.toInt();
+    final effectiveMaxWickets = (explicitMaxWickets != null && explicitMaxWickets > 0)
+        ? explicitMaxWickets
+        : (lms ? players : (players > 1 ? players - 1 : 1));
+
     return TournamentModel(
       id: id,
       name: data['name'] as String? ?? 'WASA Premier League 2026',
       shortName: data['shortName'] as String? ?? 'WPL 2026',
       slug: data['slug'] as String? ?? (id == 'main' ? 'wasa-2026' : id),
-      formatType: data['formatType'] as String? ?? 'TAPE_BALL_INDOOR',
-      oversPerSide: (data['oversPerSide'] as num?)?.toInt() ?? 4,
-      maxOverPerBowler: (data['maxOverPerBowler'] as num?)?.toInt() ?? 1,
-      playersPerTeam: (data['playersPerTeam'] as num?)?.toInt() ?? 6,
-      maxWickets: (data['maxWickets'] as num?)?.toInt() ?? 6,
-      allowLastManStanding: data['allowLastManStanding'] as bool? ?? true,
-      scorerPin: data['scorerPin'] as String? ?? '1234',
-      ownerId: data['ownerId'] as String?,
-      ownerEmail: data['ownerEmail'] as String?,
+      formatType: formatType,
+      oversPerSide: overs,
+      maxOverPerBowler: (data['maxOverPerBowler'] as num?)?.toInt() ??
+          (data['max_over_per_bowler'] as num?)?.toInt() ??
+          1,
+      playersPerTeam: players,
+      maxWickets: effectiveMaxWickets,
+      allowLastManStanding: lms,
+      scorerPin: data['scorerPin'] as String? ?? data['scorer_pin'] as String? ?? '1234',
+      ownerId: data['ownerId'] as String? ?? data['owner_id'] as String?,
+      ownerEmail: data['ownerEmail'] as String? ?? data['owner_email'] as String?,
       branding: TournamentBranding.fromMap(data['branding'] as Map<String, dynamic>?),
-      venueName: data['venueName'] as String? ?? 'WASA Sports Complex',
-      venueMapsUrl: data['venueMapsUrl'] as String?,
+      venueName: data['venueName'] as String? ?? data['venue_name'] as String? ?? 'WASA Sports Complex',
+      venueMapsUrl: data['venueMapsUrl'] as String? ?? data['venue_maps_url'] as String?,
       status: data['status'] as String? ?? 'LIVE',
       winPoints: (data['winPoints'] as num?)?.toInt() ?? 2,
       tiePoints: (data['tiePoints'] as num?)?.toInt() ?? 1,

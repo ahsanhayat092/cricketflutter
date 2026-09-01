@@ -164,6 +164,18 @@ class MatchModel {
   int get maxOvers => isFinal ? 5 : (rules.oversPerSide > 0 ? rules.oversPerSide : (oversPerSide > 0 ? oversPerSide : 4));
   int get maxBalls => maxOvers * 6;
 
+  /// Dynamic Max Wickets Calculation:
+  /// - If explicitly set in rules (> 0), use that value.
+  /// - If allowLastManStanding is true, maxWickets = playersPerTeam (all players bat, e.g. 6 for 6-a-side).
+  /// - If allowLastManStanding is false, maxWickets = playersPerTeam - 1 (e.g. 5 for 6-a-side, 10 for 11-a-side).
+  int get maxWickets => rules.maxWickets > 0
+      ? rules.maxWickets
+      : (rules.allowLastManStanding
+          ? rules.playersPerTeam
+          : (rules.playersPerTeam > 1 ? rules.playersPerTeam - 1 : 1));
+  bool get allowLastManStanding => rules.allowLastManStanding;
+  int get playersPerTeam => rules.playersPerTeam;
+
   factory MatchModel.fromMap(String id, Map<String, dynamic>? data) {
     if (data == null) {
       return MatchModel(
@@ -174,15 +186,22 @@ class MatchModel {
         date: '',
       );
     }
+    final rawRules = data['rules'] as Map<String, dynamic>?;
+    final formatType = (data['formatType'] as String?) ??
+        (data['format_type'] as String?) ??
+        (rawRules != null ? (rawRules['formatType'] as String?) : null) ??
+        'TAPE_BALL_INDOOR';
     final stage = (data['stage'] as String?)?.toUpperCase() ?? 'LEAGUE';
     final isFinalStage = stage == 'FINAL';
-    final defaultOvers = isFinalStage ? 5 : 4;
+    final defaultOvers = formatType == 'T20'
+        ? 20
+        : (formatType == 'T10' ? 10 : (isFinalStage ? 5 : 4));
 
-    final rawRules = data['rules'] as Map<String, dynamic>?;
     final parsedRules = rawRules != null
         ? MatchRulesModel.fromMap(rawRules)
         : MatchRulesModel.fromMap({
             ...data,
+            'formatType': formatType,
             'oversPerSide': data['oversPerSide'] ?? data['overs_per_side'] ?? defaultOvers,
           });
 
@@ -221,12 +240,24 @@ class MatchModel {
       playerOfMatchId: (data['playerOfMatchId'] as String?) ?? (data['player_of_match_id'] as String?),
       teamAPlayingVI: (data['teamAPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
           (data['team_a_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['teamAPlayingXI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['team_a_playing_xi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['teamAPlayingSquad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['team_a_playing_squad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
           [],
-      teamAReserveId: (data['teamAReserveId'] as String?) ?? (data['team_a_reserve_id'] as String?),
+      teamAReserveId: (data['teamAReserveId'] as String?) ??
+          (data['team_a_reserve_id'] as String?) ??
+          (data['teamAReserve'] as String?),
       teamBPlayingVI: (data['teamBPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
           (data['team_b_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['teamBPlayingXI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['team_b_playing_xi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['teamBPlayingSquad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
+          (data['team_b_playing_squad'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
           [],
-      teamBReserveId: (data['teamBReserveId'] as String?) ?? (data['team_b_reserve_id'] as String?),
+      teamBReserveId: (data['teamBReserveId'] as String?) ??
+          (data['team_b_reserve_id'] as String?) ??
+          (data['teamBReserve'] as String?),
       recentEvent: data['recentEvent'] != null ? RecentEventModel.fromMap(data['recentEvent'] as Map<String, dynamic>?) : null,
       rules: parsedRules,
       completedAt: data['completedAt'] as String?,

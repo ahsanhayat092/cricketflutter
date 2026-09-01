@@ -227,8 +227,9 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     final unbattedPlayers =
         battingSquad.where((p) => !usedPlayerIds.contains(p.id)).toList();
 
-    final isLastWicket = (currentWickets + 1) >= AppConstants.maxWicketsPerInnings;
     final currentState = ref.read(liveScoringControllerProvider(widget.matchId));
+    final effectiveMaxWickets = currentState.match.maxWickets;
+    final isLastWicket = (currentWickets + 1) >= effectiveMaxWickets;
     final isFreeHit = currentState.innings.isFreeHit;
 
     final BallDeliveryInput? input = await showDialog<BallDeliveryInput>(

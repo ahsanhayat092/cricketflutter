@@ -66,7 +66,7 @@ class _MidMatchCorrectionDialogState extends ConsumerState<MidMatchCorrectionDia
     super.dispose();
   }
 
-  void _openQuickAddPlayer(TeamModel team) {
+  void _openQuickAddPlayer(TeamModel team, int targetSquadSize) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -78,7 +78,7 @@ class _MidMatchCorrectionDialogState extends ConsumerState<MidMatchCorrectionDia
           setState(() {
             final isTeamA = team.id == widget.teamA.id;
             final targetSet = isTeamA ? _teamAPlayingVI : _teamBPlayingVI;
-            if (targetSet.length < AppConstants.playingSquadSize) {
+            if (targetSet.length < targetSquadSize) {
               targetSet.add(newPlayerId);
             }
           });
@@ -300,6 +300,7 @@ class _MidMatchCorrectionDialogState extends ConsumerState<MidMatchCorrectionDia
     final currentSquad = isTeamA ? teamAPlayers : teamBPlayers;
     final playingSet = isTeamA ? _teamAPlayingVI : _teamBPlayingVI;
     final reserveId = isTeamA ? _teamAReserveId : _teamBReserveId;
+    final targetSquadSize = widget.match.playersPerTeam;
 
     return Column(
       children: [
@@ -355,15 +356,15 @@ class _MidMatchCorrectionDialogState extends ConsumerState<MidMatchCorrectionDia
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'STARTERS (${playingSet.length}/6 Selected)',
+                'STARTERS (${playingSet.length}/$targetSquadSize Selected)',
                 style: GoogleFonts.outfit(
                   fontSize: 11,
                   fontWeight: FontWeight.w900,
-                  color: playingSet.length == 6 ? AppColors.accent : AppColors.wicket,
+                  color: playingSet.length == targetSquadSize ? AppColors.accent : AppColors.wicket,
                 ),
               ),
               OutlinedButton.icon(
-                onPressed: () => _openQuickAddPlayer(currentTeam),
+                onPressed: () => _openQuickAddPlayer(currentTeam, targetSquadSize),
                 icon: const Icon(Icons.person_add_alt_1_rounded, size: 14),
                 label: Text('+ Add Player', style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold)),
                 style: OutlinedButton.styleFrom(
@@ -441,7 +442,7 @@ class _MidMatchCorrectionDialogState extends ConsumerState<MidMatchCorrectionDia
                             if (isStarter) {
                               playingSet.remove(player.id);
                             } else {
-                              if (playingSet.length < AppConstants.playingSquadSize) {
+                              if (playingSet.length < targetSquadSize) {
                                 playingSet.add(player.id);
                               }
                             }

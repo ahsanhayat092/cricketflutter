@@ -5,8 +5,8 @@ class MatchRulesModel {
   final String formatType;
   final int oversPerSide;
   final int maxOverPerBowler;
-  final int playersPerTeam;
-  final int maxWickets;
+  final int _explicitPlayersPerTeam;
+  final int _explicitMaxWickets;
   final bool allowLastManStanding;
   final bool freeHitEnabled;
   final int noBallRuns;
@@ -16,29 +16,74 @@ class MatchRulesModel {
     this.formatType = 'TAPE_BALL_INDOOR',
     this.oversPerSide = 4,
     this.maxOverPerBowler = 1,
-    this.playersPerTeam = 6,
-    this.maxWickets = 6,
+    int playersPerTeam = 0,
+    int maxWickets = 0,
     this.allowLastManStanding = true,
     this.freeHitEnabled = true,
     this.noBallRuns = 1,
     this.wideRuns = 1,
-  });
+  })  : _explicitPlayersPerTeam = playersPerTeam,
+        _explicitMaxWickets = maxWickets;
+
+  bool get hasExplicitPlayersPerTeam => _explicitPlayersPerTeam > 0;
+
+  int get playersPerTeam => _explicitPlayersPerTeam > 0
+      ? _explicitPlayersPerTeam
+      : (formatType == 'T20' || formatType == 'T10' || formatType == 'ODI' || formatType == 'TEST' ? 11 : 6);
+
+  int get maxWickets => _explicitMaxWickets > 0
+      ? _explicitMaxWickets
+      : (allowLastManStanding
+          ? playersPerTeam
+          : (playersPerTeam > 1 ? playersPerTeam - 1 : 1));
 
   factory MatchRulesModel.fromMap(Map<String, dynamic>? data) {
     if (data == null) return const MatchRulesModel();
-    final overs = (data['oversPerSide'] as num?)?.toInt() ?? 4;
-    final players = (data['playersPerTeam'] as num?)?.toInt() ?? 6;
-    final lms = data['allowLastManStanding'] as bool? ?? (overs <= 8);
+    final formatType = data['formatType'] as String? ?? 'TAPE_BALL_INDOOR';
+    final overs = (data['oversPerSide'] as num?)?.toInt() ??
+        (data['overs_per_side'] as num?)?.toInt() ??
+        (data['overs'] as num?)?.toInt() ??
+        (data['maxOvers'] as num?)?.toInt() ??
+        (formatType == 'T20' ? 20 : (formatType == 'T10' ? 10 : 4));
+
+    final explicitPlayers = (data['playersPerTeam'] as num?)?.toInt() ??
+        (data['players_per_team'] as num?)?.toInt() ??
+        (data['players'] as num?)?.toInt() ??
+        (data['teamSize'] as num?)?.toInt() ??
+        (data['team_size'] as num?)?.toInt() ??
+        (data['squadSize'] as num?)?.toInt() ??
+        (data['squad_size'] as num?)?.toInt() ??
+        (data['playingSquadSize'] as num?)?.toInt() ??
+        (data['playing_squad_size'] as num?)?.toInt() ??
+        (data['totalPlayers'] as num?)?.toInt() ??
+        0;
+
+    final resolvedPlayers = explicitPlayers > 0
+        ? explicitPlayers
+        : (formatType == 'T20' || formatType == 'T10' || formatType == 'ODI' || formatType == 'TEST' ? 11 : 6);
+
+    final lms = data['allowLastManStanding'] as bool? ??
+        (data['allow_last_man_standing'] as bool?) ??
+        (formatType == 'T20' || formatType == 'ODI' || formatType == 'TEST'
+            ? false
+            : (resolvedPlayers <= 8 || overs <= 8));
+
+    final explicitMaxWickets = (data['maxWickets'] as num?)?.toInt() ??
+        (data['max_wickets'] as num?)?.toInt() ??
+        0;
+
     return MatchRulesModel(
-      formatType: data['formatType'] as String? ?? 'TAPE_BALL_INDOOR',
+      formatType: formatType,
       oversPerSide: overs,
-      maxOverPerBowler: (data['maxOverPerBowler'] as num?)?.toInt() ?? (overs <= 5 ? 1 : 2),
-      playersPerTeam: players,
-      maxWickets: (data['maxWickets'] as num?)?.toInt() ?? (lms ? players : players - 1),
+      maxOverPerBowler: (data['maxOverPerBowler'] as num?)?.toInt() ??
+          (data['max_over_per_bowler'] as num?)?.toInt() ??
+          (overs <= 5 ? 1 : 2),
+      playersPerTeam: explicitPlayers,
+      maxWickets: explicitMaxWickets,
       allowLastManStanding: lms,
-      freeHitEnabled: data['freeHitEnabled'] as bool? ?? true,
-      noBallRuns: (data['noBallRuns'] as num?)?.toInt() ?? 1,
-      wideRuns: (data['wideRuns'] as num?)?.toInt() ?? 1,
+      freeHitEnabled: data['freeHitEnabled'] as bool? ?? data['free_hit_enabled'] as bool? ?? true,
+      noBallRuns: (data['noBallRuns'] as num?)?.toInt() ?? (data['no_ball_runs'] as num?)?.toInt() ?? 1,
+      wideRuns: (data['wideRuns'] as num?)?.toInt() ?? (data['wide_runs'] as num?)?.toInt() ?? 1,
     );
   }
 
@@ -71,8 +116,8 @@ class MatchRulesModel {
       formatType: formatType ?? this.formatType,
       oversPerSide: oversPerSide ?? this.oversPerSide,
       maxOverPerBowler: maxOverPerBowler ?? this.maxOverPerBowler,
-      playersPerTeam: playersPerTeam ?? this.playersPerTeam,
-      maxWickets: maxWickets ?? this.maxWickets,
+      playersPerTeam: playersPerTeam ?? this._explicitPlayersPerTeam,
+      maxWickets: maxWickets ?? this._explicitMaxWickets,
       allowLastManStanding: allowLastManStanding ?? this.allowLastManStanding,
       freeHitEnabled: freeHitEnabled ?? this.freeHitEnabled,
       noBallRuns: noBallRuns ?? this.noBallRuns,

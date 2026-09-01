@@ -43,6 +43,8 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
     final venueController = TextEditingController(text: 'Sports Ground');
     String selectedFormat = 'TAPE_BALL_INDOOR';
     int overs = 4;
+    int playersPerTeam = 6;
+    bool allowLms = true;
     int maxWickets = 6;
     final pinController = TextEditingController(text: '1234');
 
@@ -147,6 +149,7 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
                 Row(
                   children: [
                     Expanded(
+                      flex: 3,
                       child: DropdownButtonFormField<String>(
                         value: selectedFormat,
                         dropdownColor: AppColors.surfaceLight,
@@ -159,18 +162,65 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
                           border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
                         ),
                         items: const [
-                          DropdownMenuItem(value: 'TAPE_BALL_INDOOR', child: Text('Indoor Tape Ball (4 Overs)')),
-                          DropdownMenuItem(value: 'T10', child: Text('T10 (10 Overs)')),
-                          DropdownMenuItem(value: 'T20', child: Text('T20 (20 Overs)')),
+                          DropdownMenuItem(value: 'TAPE_BALL_INDOOR', child: Text('Indoor Tape Ball (6-a-side, 4 Overs)')),
+                          DropdownMenuItem(value: 'T10', child: Text('T10 (11-a-side, 10 Overs)')),
+                          DropdownMenuItem(value: 'T20', child: Text('T20 (11-a-side, 20 Overs)')),
                           DropdownMenuItem(value: 'CUSTOM', child: Text('Custom')),
                         ],
                         onChanged: (val) {
                           if (val != null) {
                             setModalState(() {
                               selectedFormat = val;
-                              if (val == 'TAPE_BALL_INDOOR') overs = 4;
-                              if (val == 'T10') overs = 10;
-                              if (val == 'T20') overs = 20;
+                              if (val == 'TAPE_BALL_INDOOR') {
+                                overs = 4;
+                                playersPerTeam = 6;
+                                allowLms = true;
+                                maxWickets = 6;
+                              } else if (val == 'T10') {
+                                overs = 10;
+                                playersPerTeam = 11;
+                                allowLms = false;
+                                maxWickets = 10;
+                              } else if (val == 'T20') {
+                                overs = 20;
+                                playersPerTeam = 11;
+                                allowLms = false;
+                                maxWickets = 10;
+                              }
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<int>(
+                        value: playersPerTeam,
+                        dropdownColor: AppColors.surfaceLight,
+                        style: GoogleFonts.outfit(color: AppColors.textPrimary),
+                        decoration: InputDecoration(
+                          labelText: 'Squad / Team',
+                          labelStyle: GoogleFonts.outfit(color: AppColors.textMuted),
+                          filled: true,
+                          fillColor: AppColors.surfaceLight,
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                        ),
+                        items: const [
+                          DropdownMenuItem(value: 5, child: Text('5 Players')),
+                          DropdownMenuItem(value: 6, child: Text('6 Players')),
+                          DropdownMenuItem(value: 7, child: Text('7 Players')),
+                          DropdownMenuItem(value: 8, child: Text('8 Players')),
+                          DropdownMenuItem(value: 9, child: Text('9 Players')),
+                          DropdownMenuItem(value: 10, child: Text('10 Players')),
+                          DropdownMenuItem(value: 11, child: Text('11 Players')),
+                        ],
+                        onChanged: (val) {
+                          if (val != null) {
+                            setModalState(() {
+                              playersPerTeam = val;
+                              allowLms = playersPerTeam <= 8;
+                              maxWickets = allowLms ? playersPerTeam : playersPerTeam - 1;
                             });
                           }
                         },
@@ -200,7 +250,9 @@ class _TournamentDiscoveryDialogState extends ConsumerState<TournamentDiscoveryD
                         slug: slug,
                         formatType: selectedFormat,
                         oversPerSide: overs,
+                        playersPerTeam: playersPerTeam,
                         maxWickets: maxWickets,
+                        allowLastManStanding: allowLms,
                         scorerPin: pin,
                         ownerId: user.uid.isNotEmpty && user.uid != 'guest' ? user.uid : null,
                         ownerEmail: user.email.isNotEmpty ? user.email : null,

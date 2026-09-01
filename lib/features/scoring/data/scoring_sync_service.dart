@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../../core/constants/firestore_paths.dart';
-import '../../../../core/constants/app_constants.dart';
 import '../models/match_model.dart';
 import '../models/innings_model.dart';
 import '../models/batting_score.dart';
@@ -296,27 +295,22 @@ class ScoringSyncService {
         final inn1BattingTeam = inn1.battingTeamId;
         final inn1Runs = inn1.runs;
         final inn1Balls = inn1.balls;
+        final matchMaxWickets = match.maxWickets;
+        final inn1IsAllOut = inn1.allOut || (inn1.wickets >= matchMaxWickets);
+        final inn1EffectiveBalls = inn1IsAllOut ? match.maxBalls : inn1Balls;
 
         if (inn1BattingTeam == teamAId) {
           statA.runsFor += inn1Runs;
-          statA.ballsFor += (inn1.wickets >= AppConstants.maxWicketsPerInnings)
-              ? (match.maxBalls)
-              : inn1Balls;
+          statA.ballsFor += inn1EffectiveBalls;
 
           statB.runsAgainst += inn1Runs;
-          statB.ballsAgainst += (inn1.wickets >= AppConstants.maxWicketsPerInnings)
-              ? (match.maxBalls)
-              : inn1Balls;
+          statB.ballsAgainst += inn1EffectiveBalls;
         } else {
           statB.runsFor += inn1Runs;
-          statB.ballsFor += (inn1.wickets >= AppConstants.maxWicketsPerInnings)
-              ? (match.maxBalls)
-              : inn1Balls;
+          statB.ballsFor += inn1EffectiveBalls;
 
           statA.runsAgainst += inn1Runs;
-          statA.ballsAgainst += (inn1.wickets >= AppConstants.maxWicketsPerInnings)
-              ? (match.maxBalls)
-              : inn1Balls;
+          statA.ballsAgainst += inn1EffectiveBalls;
         }
 
         // Innings 2 stats
@@ -324,27 +318,21 @@ class ScoringSyncService {
           final inn2BattingTeam = inn2.battingTeamId;
           final inn2Runs = inn2.runs;
           final inn2Balls = inn2.balls;
+          final inn2IsAllOut = inn2.allOut || (inn2.wickets >= matchMaxWickets);
+          final inn2EffectiveBalls = inn2IsAllOut ? match.maxBalls : inn2Balls;
 
           if (inn2BattingTeam == teamAId) {
             statA.runsFor += inn2Runs;
-            statA.ballsFor += (inn2.wickets >= AppConstants.maxWicketsPerInnings)
-                ? (match.maxBalls)
-                : inn2Balls;
+            statA.ballsFor += inn2EffectiveBalls;
 
             statB.runsAgainst += inn2Runs;
-            statB.ballsAgainst += (inn2.wickets >= AppConstants.maxWicketsPerInnings)
-                ? (match.maxBalls)
-                : inn2Balls;
+            statB.ballsAgainst += inn2EffectiveBalls;
           } else {
             statB.runsFor += inn2Runs;
-            statB.ballsFor += (inn2.wickets >= AppConstants.maxWicketsPerInnings)
-                ? (match.maxBalls)
-                : inn2Balls;
+            statB.ballsFor += inn2EffectiveBalls;
 
             statA.runsAgainst += inn2Runs;
-            statA.ballsAgainst += (inn2.wickets >= AppConstants.maxWicketsPerInnings)
-                ? (match.maxBalls)
-                : inn2Balls;
+            statA.ballsAgainst += inn2EffectiveBalls;
           }
         }
 
