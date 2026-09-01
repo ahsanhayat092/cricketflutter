@@ -252,13 +252,11 @@ class CricketScoringEngine {
       );
     }
 
-    final explicitMaxWickets = rules.maxWickets;
-    final players = rules.playersPerTeam > 0 ? rules.playersPerTeam : AppConstants.playingSquadSize;
-    final isLmsEnabled = rules.allowLastManStanding;
-    final maxWickets = explicitMaxWickets > 0
-        ? explicitMaxWickets
-        : (isLmsEnabled ? players : (players > 1 ? players - 1 : 1));
+    final players = match.playersPerTeam > 0 ? match.playersPerTeam : AppConstants.playingSquadSize;
+    final isLmsEnabled = match.allowLastManStanding;
+    final maxWickets = match.maxWickets;
     final lmsThreshold = maxWickets - 1;
+    final nthPlayer = players == 11 ? '11th' : (players == 6 ? '6th' : '${players}th');
 
     // 1. Process Extras & Delivery Legality
     int deliveryTotalRuns = 0;
@@ -376,7 +374,7 @@ class CricketScoringEngine {
           newStrikerId = newBatterId;
           newNonStrikerId = newBatterId;
           celebrationType = 'LAST_MAN_STANDING';
-          celebrationText = '⚡ Last Man Standing! The 6th player is now batting alone.';
+          celebrationText = '⚡ Last Man Standing! The $nthPlayer player is now batting alone.';
         } else {
           if (outPlayerId == strikerId) {
             newStrikerId = newBatterId;
@@ -391,7 +389,7 @@ class CricketScoringEngine {
           newStrikerId = remainingBatter.playerId;
           newNonStrikerId = remainingBatter.playerId;
           celebrationType = 'LAST_MAN_STANDING';
-          celebrationText = '⚡ Last Man Standing! The 6th player is now batting alone.';
+          celebrationText = '⚡ Last Man Standing! The $nthPlayer player is now batting alone.';
         }
       }
     }

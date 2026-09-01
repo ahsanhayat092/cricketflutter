@@ -31,11 +31,18 @@ class MatchRulesModel {
       ? _explicitPlayersPerTeam
       : (formatType == 'T20' || formatType == 'T10' || formatType == 'ODI' || formatType == 'TEST' ? 11 : 6);
 
-  int get maxWickets => _explicitMaxWickets > 0
-      ? _explicitMaxWickets
-      : (allowLastManStanding
-          ? playersPerTeam
-          : (playersPerTeam > 1 ? playersPerTeam - 1 : 1));
+  int get maxWickets {
+    if (_explicitMaxWickets > 0) {
+      // Guard against legacy/stale 6-wicket default in 11-a-side matches
+      if (playersPerTeam >= 10 && _explicitMaxWickets <= 6) {
+        return allowLastManStanding ? playersPerTeam : playersPerTeam - 1;
+      }
+      return _explicitMaxWickets;
+    }
+    return allowLastManStanding
+        ? playersPerTeam
+        : (playersPerTeam > 1 ? playersPerTeam - 1 : 1);
+  }
 
   factory MatchRulesModel.fromMap(Map<String, dynamic>? data) {
     if (data == null) return const MatchRulesModel();
@@ -64,9 +71,9 @@ class MatchRulesModel {
 
     final lms = data['allowLastManStanding'] as bool? ??
         (data['allow_last_man_standing'] as bool?) ??
-        (formatType == 'T20' || formatType == 'ODI' || formatType == 'TEST'
+        (formatType == 'T20' || formatType == 'ODI' || formatType == 'TEST' || resolvedPlayers > 8
             ? false
-            : (resolvedPlayers <= 8 || overs <= 8));
+            : (resolvedPlayers <= 8));
 
     final explicitMaxWickets = (data['maxWickets'] as num?)?.toInt() ??
         (data['max_wickets'] as num?)?.toInt() ??

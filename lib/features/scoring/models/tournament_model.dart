@@ -126,15 +126,16 @@ class TournamentModel {
 
     final lms = data['allowLastManStanding'] as bool? ??
         (data['allow_last_man_standing'] as bool?) ??
-        (formatType == 'T20' || formatType == 'ODI' || formatType == 'TEST'
+        (formatType == 'T20' || formatType == 'ODI' || formatType == 'TEST' || players > 8
             ? false
-            : (players <= 8 || overs <= 8));
+            : (players <= 8));
 
     final explicitMaxWickets = (data['maxWickets'] as num?)?.toInt() ??
         (data['max_wickets'] as num?)?.toInt();
-    final effectiveMaxWickets = (explicitMaxWickets != null && explicitMaxWickets > 0)
+    final defaultMaxWickets = lms ? players : (players > 1 ? players - 1 : 1);
+    final effectiveMaxWickets = (explicitMaxWickets != null && explicitMaxWickets > 0 && !(players >= 10 && explicitMaxWickets <= 6))
         ? explicitMaxWickets
-        : (lms ? players : (players > 1 ? players - 1 : 1));
+        : defaultMaxWickets;
 
     return TournamentModel(
       id: id,

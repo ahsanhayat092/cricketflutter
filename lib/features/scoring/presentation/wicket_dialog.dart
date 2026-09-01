@@ -550,11 +550,11 @@ class _WicketDialogState extends State<WicketDialog> {
               const SizedBox(height: 16),
             ],
 
-            // 7. Incoming Batsman Selector (If not 6th wicket / all out)
+            // 7. Incoming Batsman Selector (If not last wicket / all out)
             if (!widget.isLastPossibleWicket && widget.availableNextBatsmen.isNotEmpty) ...[
               Text(
                 widget.availableNextBatsmen.length == 1
-                    ? '6th Batsman (Last Man Standing):'
+                    ? 'Incoming Batsman (Last Man Standing):'
                     : 'Next Batsman to Crease:',
                 style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary),
               ),

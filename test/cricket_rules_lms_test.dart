@@ -59,6 +59,21 @@ void main() {
 
       expect(match.playersPerTeam, equals(11));
       expect(match.maxWickets, equals(10));
+      expect(match.allowLastManStanding, isFalse);
+    });
+
+    test('11-a-side match with legacy maxWickets: 6 in Firestore correctly guards and uses 10 maxWickets', () {
+      final matchLegacy = MatchModel.fromMap('m_legacy', {
+        'playersPerTeam': 11,
+        'rules': {
+          'playersPerTeam': 11,
+          'maxWickets': 6, // Legacy default from 6-a-side
+        },
+      });
+
+      expect(matchLegacy.playersPerTeam, equals(11));
+      expect(matchLegacy.maxWickets, equals(10));
+      expect(matchLegacy.allowLastManStanding, isFalse);
     });
 
     test('T20 format defaults to 11 players per team in TournamentModel and MatchRulesModel', () {
@@ -76,6 +91,7 @@ void main() {
       });
       expect(matchT20.playersPerTeam, equals(11));
       expect(matchT20.maxWickets, equals(10));
+      expect(matchT20.allowLastManStanding, isFalse);
     });
 
     test('6-a-side with allowLastManStanding = false requires 5 wickets for all out', () {
@@ -140,7 +156,58 @@ void main() {
       expect(rulesExplicit.maxWickets, equals(7));
     });
 
-    test('Scoring Engine does NOT end innings at 5 wickets when allowLastManStanding = true', () {
+    test('11-a-side match does NOT end or trigger LMS on 5th wicket', () {
+      final match11 = MatchModel(
+        id: 'm_11',
+        matchNumber: 1,
+        teamAId: 'aus',
+        teamBId: 'pak',
+        date: '2026-09-01',
+        rules: const MatchRulesModel(
+          playersPerTeam: 11,
+          allowLastManStanding: false,
+          oversPerSide: 20,
+        ),
+      );
+
+      final inningsAt4 = InningsModel(
+        id: 'inn_1',
+        matchId: 'm_11',
+        inningsNumber: 1,
+        battingTeamId: 'aus',
+        bowlingTeamId: 'pak',
+        wickets: 4,
+        balls: 20,
+        runs: 50,
+      );
+
+      // 5th wicket falls in 11-a-side match
+      final result5th = CricketScoringEngine.processDelivery(
+        match: match11,
+        innings: inningsAt4,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: {},
+        strikerId: 'p4',
+        nonStrikerId: 'p5',
+        bowlerId: 'b1',
+        previousBowlerId: null,
+        input: const BallDeliveryInput(
+          runsOffBat: 0,
+          isWicket: true,
+          wicketType: WicketType.bowled,
+          newBatsmanId: 'p6', // 6th player comes in
+        ),
+      );
+
+      expect(result5th.innings.wickets, equals(5));
+      expect(result5th.innings.completed, isFalse, reason: '11-a-side match must not end on 5th wicket');
+      expect(result5th.innings.allOut, isFalse);
+      expect(result5th.strikerId, equals('p6'));
+      expect(result5th.nonStrikerId, equals('p5'), reason: 'Non-striker must remain distinct (no LMS)');
+    });
+
+    test('Scoring Engine does NOT end innings at 5 wickets when allowLastManStanding = true in 6-a-side', () {
       final match = MatchModel(
         id: 'm_test_lms',
         matchNumber: 1,
