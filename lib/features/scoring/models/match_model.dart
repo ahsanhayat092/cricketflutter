@@ -161,8 +161,12 @@ class MatchModel {
   bool get isFinal => matchStage == MatchStage.finalMatch;
   String get stageDisplayName => matchStage.displayName;
   
-  /// League and Playoff matches are 4 overs (24 legal balls). Final match is 5 overs (30 legal balls).
-  int get maxOvers => isFinal ? 5 : (rules.oversPerSide > 0 ? rules.oversPerSide : (oversPerSide > 0 ? oversPerSide : 4));
+  /// Match overs strictly follows configured match rules, oversPerSide, or format defaults.
+  int get maxOvers {
+    if (rules.oversPerSide > 0) return rules.oversPerSide;
+    if (oversPerSide > 0) return oversPerSide;
+    return rules.formatType == 'T20' ? 20 : (rules.formatType.contains('T10') ? 10 : 4);
+  }
   int get maxBalls => maxOvers * 6;
 
   /// Dynamic Squad Size:
@@ -218,9 +222,15 @@ class MatchModel {
         'TAPE_BALL_INDOOR';
     final stage = (data['stage'] as String?)?.toUpperCase() ?? 'LEAGUE';
     final isFinalStage = stage == 'FINAL';
-    final defaultOvers = formatType == 'T20'
-        ? 20
-        : (formatType == 'T10' ? 10 : (isFinalStage ? 5 : 4));
+    final explicitOvers = (data['oversPerSide'] is int && (data['oversPerSide'] as int) > 0)
+        ? data['oversPerSide'] as int
+        : (rawRules != null && rawRules['oversPerSide'] is int && (rawRules['oversPerSide'] as int) > 0)
+            ? rawRules['oversPerSide'] as int
+            : null;
+    final defaultOvers = explicitOvers ??
+        (formatType == 'T20'
+            ? 20
+            : (formatType.contains('T10') ? 10 : 4));
 
     final teamAPlayers = (data['teamAPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
         (data['team_a_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
