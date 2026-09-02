@@ -160,11 +160,20 @@ class MatchModel {
   bool get isPlayoff => matchStage == MatchStage.playoff;
   bool get isFinal => matchStage == MatchStage.finalMatch;
   String get stageDisplayName => matchStage.displayName;
+  String get formatType => rules.formatType;
   
   /// Match overs strictly follows configured match rules, oversPerSide, or format defaults.
+  /// Grand Final matches NEVER cap at 5 overs unless explicitly configured as a 5-over tournament.
   int get maxOvers {
-    if (rules.oversPerSide > 0) return rules.oversPerSide;
-    if (oversPerSide > 0) return oversPerSide;
+    final candidate = rules.oversPerSide > 0 ? rules.oversPerSide : (oversPerSide > 0 ? oversPerSide : 0);
+    // Guard against stale 5-over final cap in T20/T10 or matches with >= 10 players:
+    if (candidate <= 5) {
+      if (formatType == 'T20' || rules.formatType == 'T20') return 20;
+      if (formatType.contains('T10') || rules.formatType.contains('T10')) return 10;
+      if (formatType == 'ODI' || rules.formatType == 'ODI') return 50;
+      if (playersPerTeam >= 10) return 20;
+    }
+    if (candidate > 0) return candidate;
     return rules.formatType == 'T20' ? 20 : (rules.formatType.contains('T10') ? 10 : 4);
   }
   int get maxBalls => maxOvers * 6;
@@ -221,16 +230,27 @@ class MatchModel {
         (rawRules != null ? (rawRules['formatType'] as String?) : null) ??
         'TAPE_BALL_INDOOR';
     final stage = (data['stage'] as String?)?.toUpperCase() ?? 'LEAGUE';
-    final isFinalStage = stage == 'FINAL';
-    final explicitOvers = (data['oversPerSide'] is int && (data['oversPerSide'] as int) > 0)
-        ? data['oversPerSide'] as int
-        : (rawRules != null && rawRules['oversPerSide'] is int && (rawRules['oversPerSide'] as int) > 0)
-            ? rawRules['oversPerSide'] as int
-            : null;
-    final defaultOvers = explicitOvers ??
-        (formatType == 'T20'
-            ? 20
-            : (formatType.contains('T10') ? 10 : 4));
+
+    final explicitOvers = (data['oversPerSide'] as num?)?.toInt() ??
+        (data['overs_per_side'] as num?)?.toInt() ??
+        (data['maxOvers'] as num?)?.toInt() ??
+        (rawRules != null ? (rawRules['oversPerSide'] as num?)?.toInt() : null) ??
+        (rawRules != null ? (rawRules['overs_per_side'] as num?)?.toInt() : null) ??
+        (rawRules != null ? (rawRules['maxOvers'] as num?)?.toInt() : null);
+
+    // Guard against stale legacy 5 overs in final matches for T10/T20
+    int resolvedOvers;
+    if (explicitOvers != null && explicitOvers > 0) {
+      if (explicitOvers == 5 && (formatType == 'T20' || formatType == 'T10' || formatType == 'ODI')) {
+        resolvedOvers = formatType == 'T20' ? 20 : (formatType == 'T10' ? 10 : 50);
+      } else {
+        resolvedOvers = explicitOvers;
+      }
+    } else {
+      resolvedOvers = formatType == 'T20'
+          ? 20
+          : (formatType.contains('T10') ? 10 : (formatType == 'ODI' ? 50 : 4));
+    }
 
     final teamAPlayers = (data['teamAPlayingVI'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
         (data['team_a_playing_vi'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
@@ -253,9 +273,9 @@ class MatchModel {
       ...data,
       if (rawRules != null) ...rawRules,
       'formatType': formatType,
-      'oversPerSide': data['oversPerSide'] ?? data['overs_per_side'] ?? rawRules?['oversPerSide'] ?? defaultOvers,
+      'oversPerSide': resolvedOvers,
       if (actualSquadSize > 0) 'playersPerTeam': actualSquadSize,
-      if (actualSquadSize >= 10 || defaultOvers >= 10 || formatType == 'T20' || formatType == 'T10' || formatType == 'ODI')
+      if (actualSquadSize >= 10 || resolvedOvers >= 10 || formatType == 'T20' || formatType == 'T10' || formatType == 'ODI')
         'allowLastManStanding': false,
     };
 

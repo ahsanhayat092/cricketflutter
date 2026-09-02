@@ -12,6 +12,7 @@ class BowlerSelectDialog extends StatefulWidget {
   final bool isFinalMatch;
   final int maxOverPerBowler;
   final Map<String, BowlingScore> bowlingScores;
+  final int matchOvers;
   final String title;
 
   const BowlerSelectDialog({
@@ -20,6 +21,7 @@ class BowlerSelectDialog extends StatefulWidget {
     required this.previousBowlerId,
     required this.isFinalMatch,
     this.maxOverPerBowler = 1,
+    this.matchOvers = 4,
     required this.bowlingScores,
     this.title = 'SELECT MANDATORY NEXT BOWLER',
   });
@@ -35,7 +37,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
     if (widget.maxOverPerBowler > 1) {
       return 'Max ${widget.maxOverPerBowler} overs per bowler (Consecutive guard active)';
     }
-    if (widget.isFinalMatch) {
+    if (widget.isFinalMatch && widget.matchOvers <= 5) {
       return 'Final Match: Special quota active (Consecutive guard active)';
     }
     return 'Max 1 over per bowler (Consecutive guard active)';
@@ -145,6 +147,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                       stage: stage,
                       bowlingScores: widget.bowlingScores.values.toList(),
                       maxOverPerBowler: widget.maxOverPerBowler,
+                      matchOvers: widget.matchOvers,
                     );
                     final maxOvers = maxBalls ~/ 6;
 

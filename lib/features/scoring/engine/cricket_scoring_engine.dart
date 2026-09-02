@@ -48,8 +48,14 @@ class CricketScoringEngine {
     required MatchStage stage,
     required List<BowlingScore> bowlingScores,
     int? maxOverPerBowler,
+    int? matchOvers,
   }) {
-    final configuredMaxOvers = (maxOverPerBowler != null && maxOverPerBowler > 0) ? maxOverPerBowler : 1;
+    // If match is > 5 overs (e.g. 10 overs, 20 overs), calculate dynamic quota
+    final totalOvers = matchOvers ?? 0;
+    final minQuotaForOvers = totalOvers > 5 ? (totalOvers / 5).ceil() : 1;
+    final configuredMaxOvers = (maxOverPerBowler != null && maxOverPerBowler > 1)
+        ? maxOverPerBowler
+        : (totalOvers > 5 ? minQuotaForOvers : (maxOverPerBowler ?? 1));
 
     // If rules allow > 1 over per bowler (e.g., 2, 4, etc.)
     if (configuredMaxOvers > 1) {
@@ -58,6 +64,11 @@ class CricketScoringEngine {
 
     final isFinal = isFinalMatch(stage);
     if (!isFinal) return 6; // Default League: strictly 6 legal balls (1 over)
+
+    // Special 5-over final quota rule (ONLY applies to short <= 5 overs matches):
+    if (totalOvers > 5) {
+      return minQuotaForOvers * 6;
+    }
 
     final bowlersWith2Overs = bowlingScores.where((b) => b.balls >= 12).toList();
     final alreadyHas2OverBowler = bowlersWith2Overs.isNotEmpty;
@@ -88,6 +99,7 @@ class CricketScoringEngine {
     required MatchStage stage,
     required List<BowlingScore> bowlingScores,
     int? maxOverPerBowler,
+    int? matchOvers,
   }) {
     final current = bowlingScores.firstWhere(
       (b) => b.playerId == bowlerId,
@@ -98,6 +110,7 @@ class CricketScoringEngine {
       stage: stage,
       bowlingScores: bowlingScores,
       maxOverPerBowler: maxOverPerBowler,
+      matchOvers: matchOvers,
     );
   }
 
@@ -108,6 +121,7 @@ class CricketScoringEngine {
     required MatchStage stage,
     required List<BowlingScore> bowlingScores,
     int? maxOverPerBowler,
+    int? matchOvers,
   }) {
     // 1. Cannot bowl consecutive overs
     if (lastOverBowlerId != null && bowlerId == lastOverBowlerId) {
@@ -119,6 +133,7 @@ class CricketScoringEngine {
       stage: stage,
       bowlingScores: bowlingScores,
       maxOverPerBowler: maxOverPerBowler,
+      matchOvers: matchOvers,
     )) {
       return false;
     }
@@ -132,6 +147,7 @@ class CricketScoringEngine {
     required bool isFinalMatch,
     required Map<String, BowlingScore> bowlingScores,
     int? maxOverPerBowler,
+    int? matchOvers,
   }) {
     return isBowlerEligibleForNextOver(
       bowlerId: bowlerId,
@@ -139,6 +155,7 @@ class CricketScoringEngine {
       stage: isFinalMatch ? MatchStage.finalMatch : MatchStage.league,
       bowlingScores: bowlingScores.values.toList(),
       maxOverPerBowler: maxOverPerBowler,
+      matchOvers: matchOvers,
     );
   }
 
@@ -149,6 +166,7 @@ class CricketScoringEngine {
     required bool isFinalMatch,
     required Map<String, BowlingScore> bowlingScores,
     int? maxOverPerBowler,
+    int? matchOvers,
   }) {
     if (previousBowlerId != null && bowlerId == previousBowlerId) {
       return 'Bowled Previous Over (Consecutive Lock)';
@@ -159,6 +177,7 @@ class CricketScoringEngine {
       stage: stage,
       bowlingScores: bowlingScores.values.toList(),
       maxOverPerBowler: maxOverPerBowler,
+      matchOvers: matchOvers,
     )) {
       final current = bowlingScores[bowlerId]?.oversString ?? '0.0';
       final maxOvers = getBowlerMaxBalls(
@@ -166,6 +185,7 @@ class CricketScoringEngine {
         stage: stage,
         bowlingScores: bowlingScores.values.toList(),
         maxOverPerBowler: maxOverPerBowler,
+        matchOvers: matchOvers,
       ) ~/ 6;
       return 'Quota Completed ($current / $maxOvers.0 ov)';
     }
@@ -179,6 +199,7 @@ class CricketScoringEngine {
     required bool isFinalMatch,
     required Map<String, BowlingScore> bowlingScores,
     int? maxOverPerBowler,
+    int? matchOvers,
   }) {
     return bowlingPlayingVI.where((bowlerId) {
       return canBowlerBowlNextOver(
@@ -187,6 +208,7 @@ class CricketScoringEngine {
         isFinalMatch: isFinalMatch,
         bowlingScores: bowlingScores,
         maxOverPerBowler: maxOverPerBowler,
+        matchOvers: matchOvers,
       );
     }).toList();
   }
@@ -234,6 +256,7 @@ class CricketScoringEngine {
       stage: stageEnum,
       bowlingScores: bowlingScores.values.toList(),
       maxOverPerBowler: rules.maxOverPerBowler,
+      matchOvers: match.maxOvers,
     );
     final isNewOverStart = innings.balls > 0 && (innings.balls % AppConstants.ballsPerOver == 0);
     final isConsecutiveViolation = isNewOverStart && previousBowlerId != null && bowlerId == previousBowlerId;

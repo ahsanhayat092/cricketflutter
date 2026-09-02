@@ -334,5 +334,79 @@ void main() {
       expect(result6th.strikerId, equals('player_6'), reason: 'Over ended on ball 6, rotating strike');
       expect(result6th.nonStrikerId, equals('player_7'));
     });
+
+    test('Grand Final in 10-over tournament enforces 10 overs and 2-over bowler quota', () {
+      final finalMatchDoc = MatchModel.fromMap('final_match_1', {
+        'stage': 'FINAL',
+        'oversPerSide': 10,
+        'formatType': 'T10',
+        'rules': {
+          'oversPerSide': 10,
+        },
+      });
+
+      expect(finalMatchDoc.isFinal, isTrue);
+      expect(finalMatchDoc.maxOvers, equals(10), reason: 'Final match must have 10 overs, not hardcoded 5');
+      expect(finalMatchDoc.maxBalls, equals(60));
+
+      final inningsAt5Overs = InningsModel(
+        id: 'inn_final_1',
+        matchId: 'final_match_1',
+        inningsNumber: 1,
+        battingTeamId: 'team_a',
+        bowlingTeamId: 'team_b',
+        wickets: 2,
+        balls: 30, // 5.0 overs completed
+        runs: 45,
+      );
+
+      // Scoring delivery at ball 30 (5.0 overs) should NOT finish innings
+      final result = CricketScoringEngine.processDelivery(
+        match: finalMatchDoc,
+        innings: inningsAt5Overs,
+        firstInningsTotalRuns: null,
+        battingScores: {},
+        bowlingScores: {},
+        strikerId: 'p1',
+        nonStrikerId: 'p2',
+        bowlerId: 'b2',
+        previousBowlerId: 'b1',
+        input: const BallDeliveryInput(runsOffBat: 1),
+      );
+
+      expect(result.innings.balls, equals(31));
+      expect(result.innings.completed, isFalse, reason: '10-over Grand Final must not end after 5.0 overs');
+
+      // Bowler quota for 10 overs allows 2 overs (12 balls)
+      final quotaBalls = CricketScoringEngine.getBowlerMaxBalls(
+        bowlerId: 'b2',
+        stage: MatchStage.finalMatch,
+        bowlingScores: [],
+        matchOvers: finalMatchDoc.maxOvers,
+      );
+      expect(quotaBalls, equals(12), reason: 'Each bowler gets 2 overs in 10-over Final');
+    });
+
+    test('Grand Final in T20 tournament enforces 20 overs and 4-over bowler quota', () {
+      final t20FinalDoc = MatchModel.fromMap('final_t20', {
+        'stage': 'FINAL',
+        'formatType': 'T20',
+        'rules': {
+          'formatType': 'T20',
+        },
+      });
+
+      expect(t20FinalDoc.isFinal, isTrue);
+      expect(t20FinalDoc.maxOvers, equals(20), reason: 'T20 Final must have 20 overs');
+      expect(t20FinalDoc.maxBalls, equals(120));
+
+      final quotaBalls = CricketScoringEngine.getBowlerMaxBalls(
+        bowlerId: 'b1',
+        stage: MatchStage.finalMatch,
+        bowlingScores: [],
+        matchOvers: t20FinalDoc.maxOvers,
+      );
+      expect(quotaBalls, equals(24), reason: 'Each bowler gets 4 overs in T20 Final');
+    });
   });
 }

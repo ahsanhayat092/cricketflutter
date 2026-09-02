@@ -271,9 +271,15 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           orElse: () => ref.read(activeTournamentProvider).value,
         ) ?? ref.read(activeTournamentProvider).value;
 
-    final effectiveMaxOverPerBowler = (matchDoc?.rules.maxOverPerBowler != null && matchDoc!.rules.maxOverPerBowler > 0)
-        ? matchDoc.rules.maxOverPerBowler
-        : (tournament?.maxOverPerBowler ?? 1);
+    final match = matchDoc ?? currentState.match;
+    final totalMatchOvers = match.maxOvers;
+    final dynamicQuota = AppConstants.getMaxOverPerBowler(oversPerSide: totalMatchOvers);
+    final explicitQuota = match.rules.maxOverPerBowler > 0
+        ? match.rules.maxOverPerBowler
+        : (tournament?.maxOverPerBowler ?? 0);
+    final effectiveMaxOverPerBowler = (totalMatchOvers > 5 && explicitQuota <= 1)
+        ? dynamicQuota
+        : (explicitQuota > 0 ? explicitQuota : dynamicQuota);
 
     final isCurrentBowlerExhausted = currentState.currentBowlerId != null &&
         CricketScoringEngine.isBowlerQuotaExhausted(
@@ -281,6 +287,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           stage: isFinalMatch ? MatchStage.finalMatch : MatchStage.league,
           bowlingScores: currentState.bowlingScores.values.toList(),
           maxOverPerBowler: effectiveMaxOverPerBowler,
+          matchOvers: totalMatchOvers,
         );
 
     // Guard: Bowler cannot be changed mid-over once an over is underway UNLESS bowler is unassigned or quota-exhausted
@@ -311,6 +318,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           previousBowlerId: previousBowlerId,
           isFinalMatch: isFinalMatch,
           maxOverPerBowler: effectiveMaxOverPerBowler,
+          matchOvers: totalMatchOvers,
           bowlingScores: state.bowlingScores,
         ),
       );

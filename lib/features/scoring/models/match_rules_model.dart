@@ -85,7 +85,7 @@ class MatchRulesModel {
         (data['max_over_per_bowler'] as num?)?.toInt() ??
         (data['max_overs_per_bowler'] as num?)?.toInt() ??
         (data['maxOversPerBowler'] as num?)?.toInt();
-    final calculatedMaxBowler = explicitMaxBowler != null && explicitMaxBowler > 0
+    final calculatedMaxBowler = (explicitMaxBowler != null && explicitMaxBowler > 0 && !(overs > 5 && explicitMaxBowler <= 1))
         ? explicitMaxBowler
         : AppConstants.getMaxOverPerBowler(oversPerSide: overs);
 
