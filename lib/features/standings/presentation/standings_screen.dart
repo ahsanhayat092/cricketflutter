@@ -89,8 +89,12 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
     List<StandingWithTeam> list,
     TournamentModel? tournament,
   ) {
-    final isGroupFormat = tournament?.isGroupsAndKnockout == true ||
-        (tournament?.groups != null && tournament!.groups!.isNotEmpty);
+    final hasGroupedTeams = list.any((item) =>
+        (item.standing.groupName ?? item.team?.groupName)?.trim().isNotEmpty == true);
+    final isGroupFormat = (tournament?.isGroupsAndKnockout == true) ||
+        (tournament?.groups != null && tournament!.groups!.isNotEmpty) ||
+        (tournament?.groupCount != null && tournament!.groupCount! > 1) ||
+        hasGroupedTeams;
     final advanceCount = tournament?.teamsPerGroupAdvance ?? 2;
 
     String subtitle;
@@ -104,36 +108,38 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
       subtitle = 'Top 2 teams qualify directly for the Grand Final';
     }
 
-    final groupA = list.where((item) {
-      final g = item.standing.groupName ?? item.team?.groupName ?? 'A';
-      return g.toUpperCase() == 'A';
-    }).toList();
+    String resolveGroupName(StandingWithTeam item, int index) {
+      final g = item.standing.groupName ?? item.team?.groupName;
+      if (g != null && g.trim().isNotEmpty) {
+        return g.trim().toUpperCase();
+      }
+      return index % 2 == 0 ? 'A' : 'B';
+    }
 
-    final groupB = list.where((item) {
-      final g = item.standing.groupName ?? item.team?.groupName ?? 'B';
-      return g.toUpperCase() == 'B';
-    }).toList();
+    final Map<String, List<StandingWithTeam>> groupedStandings = {};
+    for (int i = 0; i < list.length; i++) {
+      final item = list[i];
+      final g = resolveGroupName(item, i);
+      groupedStandings.putIfAbsent(g, () => []).add(item);
+    }
 
-    // Sort group-scoped by position, then points, then NRR
-    groupA.sort((a, b) {
-      if (a.standing.position != b.standing.position) {
+    // Sort each group: Points desc -> Net Run Rate desc -> Wins desc -> Position
+    for (final entry in groupedStandings.entries) {
+      entry.value.sort((a, b) {
+        if (b.standing.points != a.standing.points) {
+          return b.standing.points.compareTo(a.standing.points);
+        }
+        if ((b.standing.nrr - a.standing.nrr).abs() > 0.0001) {
+          return b.standing.nrr.compareTo(a.standing.nrr);
+        }
+        if (b.standing.won != a.standing.won) {
+          return b.standing.won.compareTo(a.standing.won);
+        }
         return a.standing.position.compareTo(b.standing.position);
-      }
-      if (b.standing.points != a.standing.points) {
-        return b.standing.points.compareTo(a.standing.points);
-      }
-      return b.standing.nrr.compareTo(a.standing.nrr);
-    });
+      });
+    }
 
-    groupB.sort((a, b) {
-      if (a.standing.position != b.standing.position) {
-        return a.standing.position.compareTo(b.standing.position);
-      }
-      if (b.standing.points != a.standing.points) {
-        return b.standing.points.compareTo(a.standing.points);
-      }
-      return b.standing.nrr.compareTo(a.standing.nrr);
-    });
+    final sortedGroupKeys = groupedStandings.keys.toList()..sort();
 
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -204,36 +210,87 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
           // 2. Format specific tables
           if (isGroupFormat) ...[
             // Group Filter Pills
-            Row(
-              children: [
-                _buildGroupFilterPill('ALL', 'All Groups'),
-                const SizedBox(width: 8),
-                _buildGroupFilterPill('A', 'Group A (${groupA.length})'),
-                const SizedBox(width: 8),
-                _buildGroupFilterPill('B', 'Group B (${groupB.length})'),
-              ],
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              physics: const BouncingScrollPhysics(),
+              child: Row(
+                children: [
+                  _buildGroupFilterPill('ALL', 'All Groups (${list.length})'),
+                  for (final g in sortedGroupKeys) ...[
+                    const SizedBox(width: 8),
+                    _buildGroupFilterPill(g, 'Group $g (${groupedStandings[g]?.length ?? 0})'),
+                  ],
+                ],
+              ),
             ),
             const SizedBox(height: 16),
 
-            if (_selectedGroupTab == 'ALL' || _selectedGroupTab == 'A') ...[
-              _buildGroupSection(
-                groupName: 'Group A',
-                items: groupA,
-                advanceCount: advanceCount,
-                qualificationLabel: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL' ? 'Final (Q)' : 'Semi-Final (Q)',
-              ),
-              const SizedBox(height: 20),
-            ],
+            for (final g in sortedGroupKeys)
+              if (_selectedGroupTab == 'ALL' || _selectedGroupTab == g) ...[
+                _buildGroupSection(
+                  groupKey: g,
+                  items: groupedStandings[g] ?? [],
+                  advanceCount: advanceCount,
+                  qualificationLabel: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL' ? 'Final (Q)' : 'Semi-Final (Q)',
+                  subheaderTag: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL'
+                      ? 'Top 1 Advances to Grand Final'
+                      : 'Top $advanceCount Advance to Semi-Finals',
+                ),
+                const SizedBox(height: 20),
+              ],
 
-            if (_selectedGroupTab == 'ALL' || _selectedGroupTab == 'B') ...[
-              _buildGroupSection(
-                groupName: 'Group B',
-                items: groupB,
-                advanceCount: advanceCount,
-                qualificationLabel: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL' ? 'Final (Q)' : 'Semi-Final (Q)',
+            // Knockout Qualification Flow Banner
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppColors.accentCyan.withValues(alpha: 0.3)),
               ),
-              const SizedBox(height: 20),
-            ],
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.accentCyan.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.account_tree_rounded, color: AppColors.accentCyan, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'KNOCKOUT STAGE QUALIFICATION',
+                          style: GoogleFonts.outfit(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w900,
+                            color: AppColors.accentCyan,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL'
+                              ? 'Top team from each group qualifies directly for the Grand Final (Winner Group A vs Winner Group B).'
+                              : 'Top $advanceCount teams from each group qualify for the Knockout Stage (Semi-Final 1: A1 vs B2 • Semi-Final 2: B1 vs A2). Winners advance to the Grand Final.',
+                          style: GoogleFonts.outfit(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
           ] else ...[
             // Standard Unified Table
             Container(
@@ -320,14 +377,25 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
     return InkWell(
       onTap: () => setState(() => _selectedGroupTab = tabKey),
       borderRadius: BorderRadius.circular(20),
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected ? AppColors.accent : AppColors.surfaceLight,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? AppColors.accent : Colors.white10,
+            width: isSelected ? 1.5 : 1.0,
           ),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: AppColors.accent.withValues(alpha: 0.25),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Text(
           label,
@@ -380,16 +448,37 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
   }
 
   Widget _buildGroupSection({
-    required String groupName,
+    required String groupKey,
     required List<StandingWithTeam> items,
     required int advanceCount,
     required String qualificationLabel,
+    required String subheaderTag,
   }) {
+    final isGroupA = groupKey.toUpperCase() == 'A';
+    final isGroupB = groupKey.toUpperCase() == 'B';
+
+    final gradientColors = isGroupA
+        ? const [Color(0xFF00E5FF), Color(0xFF3B82F6)]
+        : isGroupB
+            ? const [Color(0xFFA855F7), Color(0xFF6366F1)]
+            : const [Color(0xFFF59E0B), Color(0xFFEF4444)];
+
+    final badgeShadowColor = (isGroupA
+            ? const Color(0xFF00E5FF)
+            : (isGroupB ? const Color(0xFFA855F7) : const Color(0xFFF59E0B)))
+        .withValues(alpha: 0.35);
+
     return Container(
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        border: Border.all(
+          color: isGroupA
+              ? const Color(0xFF00E5FF).withValues(alpha: 0.25)
+              : isGroupB
+                  ? const Color(0xFFA855F7).withValues(alpha: 0.25)
+                  : Colors.white.withValues(alpha: 0.08),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.25),
@@ -401,42 +490,54 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceLight.withValues(alpha: 0.35),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+            ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: AppColors.accent,
-                        shape: BoxShape.circle,
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(colors: gradientColors),
+                    borderRadius: BorderRadius.circular(8),
+                    boxShadow: [
+                      BoxShadow(
+                        color: badgeShadowColor,
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
                       ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      groupName.toUpperCase(),
-                      style: GoogleFonts.outfit(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        color: AppColors.textPrimary,
-                        letterSpacing: 0.5,
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 14),
+                      const SizedBox(width: 6),
+                      Text(
+                        'GROUP $groupKey STANDINGS',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                          letterSpacing: 0.8,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: AppColors.completedGreen.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(6),
                     border: Border.all(color: AppColors.completedGreen.withValues(alpha: 0.3)),
                   ),
                   child: Text(
-                    'Top $advanceCount Qualify',
+                    subheaderTag,
                     style: GoogleFonts.outfit(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
@@ -454,7 +555,7 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
             Padding(
               padding: const EdgeInsets.all(20),
               child: Center(
-                child: Text('No teams in $groupName', style: GoogleFonts.outfit(color: AppColors.textMuted)),
+                child: Text('No teams in Group $groupKey', style: GoogleFonts.outfit(color: AppColors.textMuted)),
               ),
             )
           else
@@ -512,7 +613,13 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: isQualified ? AppColors.accent.withValues(alpha: 0.04) : Colors.transparent,
-        border: isLast ? null : Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
+        border: Border(
+          left: BorderSide(
+            color: isQualified ? AppColors.completedGreen : Colors.transparent,
+            width: 3.5,
+          ),
+          bottom: isLast ? BorderSide.none : BorderSide(color: Colors.white.withValues(alpha: 0.05)),
+        ),
       ),
       child: Row(
         children: [

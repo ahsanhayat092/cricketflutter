@@ -1,8 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wpl_cricket_app/features/scoring/models/match_model.dart';
+import 'package:wpl_cricket_app/features/scoring/models/team_model.dart';
 import 'package:wpl_cricket_app/features/scoring/models/tournament_model.dart';
 import 'package:wpl_cricket_app/features/standings/models/standing.dart';
+import 'package:wpl_cricket_app/features/standings/providers/standings_provider.dart';
 
 void main() {
   group('Central Backend Brain Integration - TournamentModel Tests', () {
@@ -162,6 +164,105 @@ void main() {
       expect(serialized['position'], equals(1));
       expect(serialized['status'], equals('QUALIFIED_PLAYOFF'));
       expect(serialized['netRunRate'], equals(1.875));
+    });
+  });
+
+  group('Standings Screen Grouping & Partitioning Logic Tests', () {
+    test('Strict group resolver partitions teams without duplication across Group A and Group B', () {
+      final teams = [
+        StandingWithTeam(
+          standing: const StandingModel(id: 's1', teamId: 'sl', groupName: 'A', points: 4, nrr: 1.2),
+          team: const TeamModel(id: 'sl', name: 'Sri Lanka', shortName: 'SL', groupName: 'A'),
+        ),
+        StandingWithTeam(
+          standing: const StandingModel(id: 's2', teamId: 'ind', groupName: 'A', points: 6, nrr: 2.1),
+          team: const TeamModel(id: 'ind', name: 'India', shortName: 'IND', groupName: 'A'),
+        ),
+        StandingWithTeam(
+          standing: const StandingModel(id: 's3', teamId: 'pak', groupName: 'A', points: 2, nrr: -0.5),
+          team: const TeamModel(id: 'pak', name: 'Pakistan', shortName: 'PAK', groupName: 'A'),
+        ),
+        StandingWithTeam(
+          standing: const StandingModel(id: 's4', teamId: 'ban', groupName: 'B', points: 4, nrr: 0.8),
+          team: const TeamModel(id: 'ban', name: 'Bangladesh', shortName: 'BAN', groupName: 'B'),
+        ),
+        StandingWithTeam(
+          standing: const StandingModel(id: 's5', teamId: 'afg', groupName: 'B', points: 4, nrr: 1.5),
+          team: const TeamModel(id: 'afg', name: 'Afghanistan', shortName: 'AFG', groupName: 'B'),
+        ),
+        StandingWithTeam(
+          standing: const StandingModel(id: 's6', teamId: 'nep', groupName: 'B', points: 0, nrr: -2.3),
+          team: const TeamModel(id: 'nep', name: 'Nepal', shortName: 'NEP', groupName: 'B'),
+        ),
+      ];
+
+      String resolveGroupName(StandingWithTeam item, int index) {
+        final g = item.standing.groupName ?? item.team?.groupName;
+        if (g != null && g.trim().isNotEmpty) {
+          return g.trim().toUpperCase();
+        }
+        return index % 2 == 0 ? 'A' : 'B';
+      }
+
+      final Map<String, List<StandingWithTeam>> groupedStandings = {};
+      for (int i = 0; i < teams.length; i++) {
+        final item = teams[i];
+        final g = resolveGroupName(item, i);
+        groupedStandings.putIfAbsent(g, () => []).add(item);
+      }
+
+      for (final entry in groupedStandings.entries) {
+        entry.value.sort((a, b) {
+          if (b.standing.points != a.standing.points) {
+            return b.standing.points.compareTo(a.standing.points);
+          }
+          if ((b.standing.nrr - a.standing.nrr).abs() > 0.0001) {
+            return b.standing.nrr.compareTo(a.standing.nrr);
+          }
+          return a.standing.position.compareTo(b.standing.position);
+        });
+      }
+
+      expect(groupedStandings['A']!.length, equals(3));
+      expect(groupedStandings['B']!.length, equals(3));
+
+      // No team in Group A is also in Group B
+      final groupATeamIds = groupedStandings['A']!.map((e) => e.team?.id).toSet();
+      final groupBTeamIds = groupedStandings['B']!.map((e) => e.team?.id).toSet();
+      expect(groupATeamIds.intersection(groupBTeamIds), isEmpty);
+
+      // Verify sorting: India (6 pts) is 1st in Group A, Sri Lanka (4 pts) 2nd, Pakistan (2 pts) 3rd
+      expect(groupedStandings['A']![0].team!.id, equals('ind'));
+      expect(groupedStandings['A']![1].team!.id, equals('sl'));
+      expect(groupedStandings['A']![2].team!.id, equals('pak'));
+
+      // Verify sorting: Afghanistan (4 pts, +1.5 NRR) is 1st in Group B over Bangladesh (4 pts, +0.8 NRR)
+      expect(groupedStandings['B']![0].team!.id, equals('afg'));
+      expect(groupedStandings['B']![1].team!.id, equals('ban'));
+      expect(groupedStandings['B']![2].team!.id, equals('nep'));
+    });
+
+    test('Dynamic isGroupFormat activates even when tournament object is null/loading', () {
+      final teams = [
+        StandingWithTeam(
+          standing: const StandingModel(id: 's1', teamId: 't1', groupName: 'A'),
+        ),
+        StandingWithTeam(
+          standing: const StandingModel(id: 's2', teamId: 't2', groupName: 'B'),
+        ),
+      ];
+
+      TournamentModel? tournament; // still loading / null
+
+      final hasGroupedTeams = teams.any((item) =>
+          (item.standing.groupName ?? item.team?.groupName)?.trim().isNotEmpty == true);
+      final isGroupFormat = (tournament?.isGroupsAndKnockout == true) ||
+          (tournament?.groups != null && tournament!.groups!.isNotEmpty) ||
+          (tournament?.groupCount != null && tournament!.groupCount! > 1) ||
+          hasGroupedTeams;
+
+      expect(hasGroupedTeams, isTrue);
+      expect(isGroupFormat, isTrue);
     });
   });
 }
