@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/utils/firestore_helper.dart';
 import '../../scoring/models/team_model.dart';
 
 typedef Standing = StandingModel;
@@ -120,7 +121,7 @@ class StandingModel {
       teamName: rawTeamName,
       shortName: rawShortName,
       logoUrl: rawLogoUrl,
-      updatedAt: data['updatedAt'] as String?,
+      updatedAt: parseFirestoreDateTimeString(data['updatedAt']),
     );
   }
 

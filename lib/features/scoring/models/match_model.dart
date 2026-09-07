@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/utils/firestore_helper.dart';
 import 'match_rules_model.dart';
 
 class RecentEventModel {
@@ -370,7 +371,7 @@ class MatchModel {
           (data['team_b_id'] as String?) ??
           (data['teamB_id'] as String?) ??
           (data['teamB'] is String ? data['teamB'] as String : null),
-      date: (data['date'] as String?) ?? '',
+      date: parseFirestoreDateTimeString(data['date']) ?? (data['date'] as String?) ?? '',
       time: (data['time'] as String?) ?? '14:00',
       venue: (data['venue'] as String?) ?? 'Cricket Ground',
       oversPerSide: (data['oversPerSide'] as num?)?.toInt() ??
@@ -393,9 +394,9 @@ class MatchModel {
           (data['teamBReserve'] as String?),
       recentEvent: data['recentEvent'] != null ? RecentEventModel.fromMap(data['recentEvent'] as Map<String, dynamic>?) : null,
       rules: parsedRules,
-      completedAt: data['completedAt'] as String?,
-      createdAt: data['createdAt'] as String?,
-      updatedAt: data['updatedAt'] as String?,
+      completedAt: parseFirestoreDateTimeString(data['completedAt']),
+      createdAt: parseFirestoreDateTimeString(data['createdAt']),
+      updatedAt: parseFirestoreDateTimeString(data['updatedAt']),
     );
   }
 

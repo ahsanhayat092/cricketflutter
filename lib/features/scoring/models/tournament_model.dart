@@ -1,4 +1,5 @@
 import '../../../core/constants/app_constants.dart';
+import '../../../core/utils/firestore_helper.dart';
 import 'match_rules_model.dart';
 
 class TournamentBranding {
@@ -192,8 +193,8 @@ class TournamentModel {
       noResultPoints: (data['noResultPoints'] as num?)?.toInt() ?? 1,
       lossPoints: (data['lossPoints'] as num?)?.toInt() ?? 0,
       championTeamId: data['championTeamId'] as String?,
-      createdAt: data['createdAt'] as String?,
-      updatedAt: data['updatedAt'] as String?,
+      createdAt: parseFirestoreDateTimeString(data['createdAt']),
+      updatedAt: parseFirestoreDateTimeString(data['updatedAt']),
     );
   }
 

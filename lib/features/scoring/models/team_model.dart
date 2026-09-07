@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/utils/firestore_helper.dart';
 import '../../../core/utils/image_url_helper.dart';
 
 typedef Team = TeamModel;
@@ -73,8 +74,8 @@ class TeamModel {
       logoUrl: ImageUrlHelper.formatDirectImageUrl(rawLogo),
       primaryColor: data['primaryColor'] as String?,
       secondaryColor: data['secondaryColor'] as String?,
-      createdAt: data['createdAt'] as String?,
-      updatedAt: data['updatedAt'] as String?,
+      createdAt: parseFirestoreDateTimeString(data['createdAt']),
+      updatedAt: parseFirestoreDateTimeString(data['updatedAt']),
     );
   }
 

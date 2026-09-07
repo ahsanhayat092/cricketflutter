@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/utils/cricket_calculator.dart';
+import '../../../core/utils/firestore_helper.dart';
 
 class InningsModel {
   final String id;
@@ -96,8 +97,8 @@ class InningsModel {
       strikerId: data['strikerId'] as String?,
       nonStrikerId: data['nonStrikerId'] as String?,
       previousBowlerId: data['previousBowlerId'] as String?,
-      createdAt: data['createdAt'] as String?,
-      updatedAt: data['updatedAt'] as String?,
+      createdAt: parseFirestoreDateTimeString(data['createdAt']),
+      updatedAt: parseFirestoreDateTimeString(data['updatedAt']),
     );
   }
 

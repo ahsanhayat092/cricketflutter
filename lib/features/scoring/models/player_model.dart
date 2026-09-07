@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/utils/firestore_helper.dart';
 import '../../../core/utils/image_url_helper.dart';
 
 typedef Player = PlayerModel;
@@ -61,8 +62,8 @@ class PlayerModel {
       battingStyle: data['battingStyle'] as String?,
       bowlingStyle: data['bowlingStyle'] as String?,
       photoUrl: ImageUrlHelper.formatDirectImageUrl(data['photoUrl'] as String?),
-      createdAt: data['createdAt'] as String?,
-      updatedAt: data['updatedAt'] as String?,
+      createdAt: parseFirestoreDateTimeString(data['createdAt']),
+      updatedAt: parseFirestoreDateTimeString(data['updatedAt']),
     );
   }
 

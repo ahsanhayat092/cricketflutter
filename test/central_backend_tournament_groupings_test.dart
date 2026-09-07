@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wpl_cricket_app/features/scoring/models/match_model.dart';
 import 'package:wpl_cricket_app/features/scoring/models/tournament_model.dart';
@@ -65,6 +66,25 @@ void main() {
       expect(match.oversPerSide, equals(8));
       expect(match.isSemi, isTrue);
       expect(match.isKnockout, isTrue);
+    });
+
+    test('MatchModel parses Firestore Timestamp completedAt without throwing type cast error', () {
+      final now = DateTime.now();
+      final data = {
+        'id': 'match_completed_1',
+        'matchNumber': 1,
+        'stage': 'LEAGUE',
+        'status': 'COMPLETED',
+        'winningTeamId': 'team_a',
+        'completedAt': Timestamp.fromDate(now),
+        'createdAt': Timestamp.fromDate(now),
+        'updatedAt': Timestamp.fromDate(now),
+      };
+
+      final match = MatchModel.fromMap('match_completed_1', data);
+      expect(match.completedAt, isNotNull);
+      expect(match.completedAt, equals(now.toIso8601String()));
+      expect(match.status, equals('COMPLETED'));
     });
 
     test('MatchModel stageDisplayName formats correctly for groups and knockout stages', () {
