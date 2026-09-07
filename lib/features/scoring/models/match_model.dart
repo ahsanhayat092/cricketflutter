@@ -58,7 +58,12 @@ class RecentEventModel {
 
 enum MatchStage {
   league,
+  semi1,
+  semi2,
   playoff,
+  qualifier1,
+  eliminator,
+  qualifier2,
   finalMatch,
 }
 
@@ -67,26 +72,51 @@ extension MatchStageX on MatchStage {
     switch (this) {
       case MatchStage.league:
         return 'LEAGUE';
+      case MatchStage.semi1:
+        return 'SEMI_1';
+      case MatchStage.semi2:
+        return 'SEMI_2';
       case MatchStage.playoff:
         return 'PLAYOFF';
+      case MatchStage.qualifier1:
+        return 'QUALIFIER_1';
+      case MatchStage.eliminator:
+        return 'ELIMINATOR';
+      case MatchStage.qualifier2:
+        return 'QUALIFIER_2';
       case MatchStage.finalMatch:
         return 'FINAL';
     }
   }
 
   static MatchStage fromFirestoreString(String? val) {
-    final v = val?.toUpperCase();
+    final v = val?.toUpperCase().trim();
     if (v == 'FINAL') return MatchStage.finalMatch;
+    if (v == 'SEMI_1' || v == 'SEMI1' || v == 'SF1') return MatchStage.semi1;
+    if (v == 'SEMI_2' || v == 'SEMI2' || v == 'SF2') return MatchStage.semi2;
     if (v == 'PLAYOFF') return MatchStage.playoff;
+    if (v == 'QUALIFIER_1' || v == 'QUALIFIER1' || v == 'Q1') return MatchStage.qualifier1;
+    if (v == 'ELIMINATOR' || v == 'ELIM') return MatchStage.eliminator;
+    if (v == 'QUALIFIER_2' || v == 'QUALIFIER2' || v == 'Q2') return MatchStage.qualifier2;
     return MatchStage.league;
   }
 
   String get displayName {
     switch (this) {
+      case MatchStage.semi1:
+        return '🎯 Semi-Final 1 (A1 vs B2)';
+      case MatchStage.semi2:
+        return '🎯 Semi-Final 2 (B1 vs A2)';
       case MatchStage.finalMatch:
         return '🏆 Grand Final';
       case MatchStage.playoff:
         return '⚔️ Playoff (Rank 2 vs 3)';
+      case MatchStage.qualifier1:
+        return '🎯 Qualifier 1 (Rank 1 vs 2)';
+      case MatchStage.eliminator:
+        return '⚡ Eliminator (Rank 3 vs 4)';
+      case MatchStage.qualifier2:
+        return '⚔️ Qualifier 2';
       case MatchStage.league:
         return 'League Match';
     }
@@ -99,14 +129,15 @@ class MatchModel {
   final String id;
   final String tournamentId;
   final int matchNumber;
-  final String stage; // "LEAGUE" | "PLAYOFF" | "FINAL"
+  final String stage; // "LEAGUE" | "SEMI_1" | "SEMI_2" | "FINAL" | "PLAYOFF" | "QUALIFIER_1" | "ELIMINATOR" | "QUALIFIER_2"
+  final String? groupName; // "A" | "B" | null
   final String day; // "FRIDAY" | "SATURDAY" | "SUNDAY" etc.
-  final String teamAId;
-  final String teamBId;
+  final String? teamAId; // Nullable for upcoming knockout matches
+  final String? teamBId; // Nullable for upcoming knockout matches
   final String date;
   final String time;
   final String venue;
-  final int oversPerSide; // 4 overs for LEAGUE/PLAYOFF, 5 overs for FINAL
+  final int oversPerSide;
   final String status; // "UPCOMING" | "LIVE" | "COMPLETED" | "ABANDONED" | "NO_RESULT"
   final String? tossWinnerId;
   final String? tossDecision; // "BAT" | "BOWL"
@@ -128,13 +159,14 @@ class MatchModel {
     this.tournamentId = 'main',
     required this.matchNumber,
     this.stage = 'LEAGUE',
+    this.groupName,
     this.day = 'FRIDAY',
-    required this.teamAId,
-    required this.teamBId,
+    this.teamAId,
+    this.teamBId,
     required this.date,
     this.time = '14:00',
-    this.venue = 'WASA Sports Complex',
-    this.oversPerSide = 4, // Default 4 overs for League/Playoff, 5 overs for Final
+    this.venue = 'Cricket Ground',
+    this.oversPerSide = 4,
     this.status = 'UPCOMING',
     this.tossWinnerId,
     this.tossDecision,
@@ -157,9 +189,47 @@ class MatchModel {
   bool get isUpcoming => status.toUpperCase() == 'UPCOMING';
   bool get isCompleted => status.toUpperCase() == 'COMPLETED';
   MatchStage get matchStage => MatchStageX.fromFirestoreString(stage);
-  bool get isPlayoff => matchStage == MatchStage.playoff;
-  bool get isFinal => matchStage == MatchStage.finalMatch;
-  String get stageDisplayName => matchStage.displayName;
+  bool get isPlayoff =>
+      matchStage == MatchStage.playoff ||
+      matchStage == MatchStage.qualifier1 ||
+      matchStage == MatchStage.eliminator ||
+      matchStage == MatchStage.qualifier2;
+  bool get isSemi => matchStage == MatchStage.semi1 || matchStage == MatchStage.semi2;
+  bool get isFinal => matchStage == MatchStage.finalMatch || stage.toUpperCase() == 'FINAL';
+  bool get isKnockout => matchStage != MatchStage.league;
+
+  String get stageDisplayName {
+    if (groupName != null && groupName!.isNotEmpty && matchStage == MatchStage.league) {
+      return 'Group $groupName · Match #$matchNumber';
+    }
+    return matchStage.displayName;
+  }
+
+  /// Returns descriptive placeholder team name when team is not yet decided (TBD)
+  String getPlaceholderTeamName({required bool isTeamA, String? groupPlayoffFormat}) {
+    switch (matchStage) {
+      case MatchStage.semi1:
+        return isTeamA ? 'TBD (Winner Group A)' : 'TBD (Runner-up Group B)';
+      case MatchStage.semi2:
+        return isTeamA ? 'TBD (Winner Group B)' : 'TBD (Runner-up Group A)';
+      case MatchStage.finalMatch:
+        if (groupPlayoffFormat == 'GROUP_DIRECT_FINAL') {
+          return isTeamA ? 'TBD (Winner Group A)' : 'TBD (Winner Group B)';
+        }
+        return isTeamA ? 'TBD (Winner SF1)' : 'TBD (Winner SF2)';
+      case MatchStage.playoff:
+        return isTeamA ? 'TBD (Rank 2)' : 'TBD (Rank 3)';
+      case MatchStage.qualifier1:
+        return isTeamA ? 'TBD (Rank 1)' : 'TBD (Rank 2)';
+      case MatchStage.eliminator:
+        return isTeamA ? 'TBD (Rank 3)' : 'TBD (Rank 4)';
+      case MatchStage.qualifier2:
+        return isTeamA ? 'TBD (Loser Q1)' : 'TBD (Winner Elim)';
+      case MatchStage.league:
+        return isTeamA ? 'Team A' : 'Team B';
+    }
+  }
+
   String get formatType => rules.formatType;
   
   /// Match overs strictly follows configured match rules, oversPerSide, or format defaults.
@@ -290,17 +360,16 @@ class MatchModel {
           (data['match_number'] as num?)?.toInt() ??
           1,
       stage: stage,
+      groupName: (data['groupName'] as String?) ?? (data['group_name'] as String?) ?? (data['group'] as String?),
       day: (data['day'] as String?)?.toUpperCase() ?? 'FRIDAY',
       teamAId: (data['teamAId'] as String?) ??
           (data['team_a_id'] as String?) ??
           (data['teamA_id'] as String?) ??
-          (data['teamA'] is String ? data['teamA'] as String : null) ??
-          '',
+          (data['teamA'] is String ? data['teamA'] as String : null),
       teamBId: (data['teamBId'] as String?) ??
           (data['team_b_id'] as String?) ??
           (data['teamB_id'] as String?) ??
-          (data['teamB'] is String ? data['teamB'] as String : null) ??
-          '',
+          (data['teamB'] is String ? data['teamB'] as String : null),
       date: (data['date'] as String?) ?? '',
       time: (data['time'] as String?) ?? '14:00',
       venue: (data['venue'] as String?) ?? 'Cricket Ground',
@@ -342,6 +411,7 @@ class MatchModel {
       'tournamentId': tournamentId,
       'matchNumber': matchNumber,
       'stage': stage,
+      if (groupName != null) 'groupName': groupName,
       'day': day,
       'teamAId': teamAId,
       'teamBId': teamBId,
@@ -374,6 +444,7 @@ class MatchModel {
     String? tournamentId,
     int? matchNumber,
     String? stage,
+    String? groupName,
     String? day,
     String? teamAId,
     String? teamBId,
@@ -402,6 +473,7 @@ class MatchModel {
       tournamentId: tournamentId ?? this.tournamentId,
       matchNumber: matchNumber ?? this.matchNumber,
       stage: stage ?? this.stage,
+      groupName: groupName ?? this.groupName,
       day: day ?? this.day,
       teamAId: teamAId ?? this.teamAId,
       teamBId: teamBId ?? this.teamBId,

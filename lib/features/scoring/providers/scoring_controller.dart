@@ -228,12 +228,14 @@ class ScoringController extends StateNotifier<ScoringState> {
           for (final t in teams) {
             teamNames[t.id] = t.name;
           }
-          if (match.teamAId.isNotEmpty && !teamNames.containsKey(match.teamAId)) {
-            final tA = await _service.getTeam(match.teamAId);
+          final teamAId = match.teamAId;
+          if (teamAId != null && teamAId.isNotEmpty && !teamNames.containsKey(teamAId)) {
+            final tA = await _service.getTeam(teamAId);
             if (tA != null) teamNames[tA.id] = tA.name;
           }
-          if (match.teamBId.isNotEmpty && !teamNames.containsKey(match.teamBId)) {
-            final tB = await _service.getTeam(match.teamBId);
+          final teamBId = match.teamBId;
+          if (teamBId != null && teamBId.isNotEmpty && !teamNames.containsKey(teamBId)) {
+            final tB = await _service.getTeam(teamBId);
             if (tB != null) teamNames[tB.id] = tB.name;
           }
         } catch (e) {
@@ -307,14 +309,16 @@ class ScoringController extends StateNotifier<ScoringState> {
           );
         } else {
           // Determine batting/bowling teams from match toss if innings not created yet
-          final isTeamAWon = match.tossWinnerId == match.teamAId;
+          final teamAId = match.teamAId ?? '';
+          final teamBId = match.teamBId ?? '';
+          final isTeamAWon = match.tossWinnerId == teamAId;
           final isBatFirst = match.tossDecision?.toUpperCase() == 'BAT';
           final batTeam = (isTeamAWon && isBatFirst) || (!isTeamAWon && !isBatFirst)
-              ? match.teamAId
-              : match.teamBId;
-          final bowlTeam = batTeam == match.teamAId ? match.teamBId : match.teamAId;
+              ? teamAId
+              : teamBId;
+          final bowlTeam = batTeam == teamAId ? teamBId : teamAId;
 
-          final battingSquad = batTeam == match.teamAId ? match.teamAPlayingVI : match.teamBPlayingVI;
+          final battingSquad = batTeam == teamAId ? match.teamAPlayingVI : match.teamBPlayingVI;
 
           final s1 = battingSquad.isNotEmpty ? battingSquad[0] : null;
           final s2 = battingSquad.length > 1 ? battingSquad[1] : null;

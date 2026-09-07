@@ -64,12 +64,14 @@ class _MatchScorecardScreenState extends ConsumerState<MatchScorecardScreen>
     final teamMap = {for (var t in teams) t.id: t};
     final playerMap = {for (var p in players) p.id: p};
 
-    final teamA = teamMap[match.teamAId] ??
-        ref.watch(singleTeamStreamProvider(match.teamAId)).value ??
-        TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
-    final teamB = teamMap[match.teamBId] ??
-        ref.watch(singleTeamStreamProvider(match.teamBId)).value ??
-        TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+    final teamAId = match.teamAId ?? '';
+    final teamBId = match.teamBId ?? '';
+    final teamA = (teamAId.isNotEmpty ? teamMap[teamAId] : null) ??
+        (teamAId.isNotEmpty ? ref.watch(singleTeamStreamProvider(teamAId)).value : null) ??
+        TeamModel(id: teamAId, name: match.getPlaceholderTeamName(isTeamA: true), shortName: 'TMA');
+    final teamB = (teamBId.isNotEmpty ? teamMap[teamBId] : null) ??
+        (teamBId.isNotEmpty ? ref.watch(singleTeamStreamProvider(teamBId)).value : null) ??
+        TeamModel(id: teamBId, name: match.getPlaceholderTeamName(isTeamA: false), shortName: 'TMB');
 
     final innings1 = inningsList.isNotEmpty ? inningsList.firstWhere((i) => i.inningsNumber == 1, orElse: () => inningsList.first) : null;
     final innings2 = inningsList.length > 1 ? inningsList.firstWhere((i) => i.inningsNumber == 2, orElse: () => inningsList.last) : null;

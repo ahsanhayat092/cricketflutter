@@ -78,8 +78,13 @@ MatchModel hydrateMatchWithStandings(
 }) {
   final stageEnum = MatchStageX.fromFirestoreString(match.stage);
 
-  // League matches don't need bracket hydration
-  if (stageEnum == MatchStage.league) return match;
+  // League matches and central backend knockout stages don't need flat bracket hydration
+  if (stageEnum == MatchStage.league ||
+      stageEnum == MatchStage.semi1 ||
+      stageEnum == MatchStage.semi2 ||
+      match.groupName != null) {
+    return match;
+  }
 
   // If allMatches is provided and has league matches, verify they are all completed
   if (allMatches != null) {
@@ -115,17 +120,20 @@ MatchModel hydrateMatchWithStandings(
     final rank2TeamId = standings[1].standing.teamId;
     final rank3TeamId = standings[2].standing.teamId;
 
-    final isTeamAUnset = match.teamAId.isEmpty ||
-        match.teamAId.toLowerCase().contains('rank_2') ||
-        match.teamAId.toLowerCase().contains('rank2') ||
-        match.teamAId.toLowerCase() == 'tbd' ||
-        match.teamAId.toLowerCase() == 'team a';
+    final teamA = match.teamAId ?? '';
+    final teamB = match.teamBId ?? '';
 
-    final isTeamBUnset = match.teamBId.isEmpty ||
-        match.teamBId.toLowerCase().contains('rank_3') ||
-        match.teamBId.toLowerCase().contains('rank3') ||
-        match.teamBId.toLowerCase() == 'tbd' ||
-        match.teamBId.toLowerCase() == 'team b';
+    final isTeamAUnset = teamA.isEmpty ||
+        teamA.toLowerCase().contains('rank_2') ||
+        teamA.toLowerCase().contains('rank2') ||
+        teamA.toLowerCase() == 'tbd' ||
+        teamA.toLowerCase() == 'team a';
+
+    final isTeamBUnset = teamB.isEmpty ||
+        teamB.toLowerCase().contains('rank_3') ||
+        teamB.toLowerCase().contains('rank3') ||
+        teamB.toLowerCase() == 'tbd' ||
+        teamB.toLowerCase() == 'team b';
 
     if (isTeamAUnset || isTeamBUnset) {
       return match.copyWith(
@@ -157,18 +165,21 @@ MatchModel hydrateMatchWithStandings(
       }
     }
 
-    final isTeamAUnset = match.teamAId.isEmpty ||
-        match.teamAId.toLowerCase().contains('rank_1') ||
-        match.teamAId.toLowerCase().contains('rank1') ||
-        match.teamAId.toLowerCase() == 'tbd' ||
-        match.teamAId.toLowerCase() == 'team a';
+    final teamA = match.teamAId ?? '';
+    final teamB = match.teamBId ?? '';
 
-    final isTeamBUnset = match.teamBId.isEmpty ||
-        match.teamBId.toLowerCase().contains('rank_2') ||
-        match.teamBId.toLowerCase().contains('rank2') ||
-        match.teamBId.toLowerCase().contains('playoff') ||
-        match.teamBId.toLowerCase() == 'tbd' ||
-        match.teamBId.toLowerCase() == 'team b';
+    final isTeamAUnset = teamA.isEmpty ||
+        teamA.toLowerCase().contains('rank_1') ||
+        teamA.toLowerCase().contains('rank1') ||
+        teamA.toLowerCase() == 'tbd' ||
+        teamA.toLowerCase() == 'team a';
+
+    final isTeamBUnset = teamB.isEmpty ||
+        teamB.toLowerCase().contains('rank_2') ||
+        teamB.toLowerCase().contains('rank2') ||
+        teamB.toLowerCase().contains('playoff') ||
+        teamB.toLowerCase() == 'tbd' ||
+        teamB.toLowerCase() == 'team b';
 
     String? targetTeamB = match.teamBId;
     if (isTeamBUnset) {

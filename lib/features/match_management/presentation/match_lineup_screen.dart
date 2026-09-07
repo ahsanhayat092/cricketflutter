@@ -171,10 +171,12 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     final matchTourId = currentMatch.tournamentId.isNotEmpty ? currentMatch.tournamentId : ref.read(activeTournamentIdProvider);
     final allTeams = ref.read(tournamentTeamsProvider(matchTourId)).value ?? [];
     final teamMap = {for (var t in allTeams) t.id: t};
-    final directTeamA = await ref.read(scoringServiceProvider).getTeam(currentMatch.teamAId);
-    final directTeamB = await ref.read(scoringServiceProvider).getTeam(currentMatch.teamBId);
-    final teamA = teamMap[currentMatch.teamAId] ?? directTeamA ?? TeamModel(id: currentMatch.teamAId, name: 'Team A', shortName: 'TMA');
-    final teamB = teamMap[currentMatch.teamBId] ?? directTeamB ?? TeamModel(id: currentMatch.teamBId, name: 'Team B', shortName: 'TMB');
+    final teamAId = currentMatch.teamAId ?? '';
+    final teamBId = currentMatch.teamBId ?? '';
+    final directTeamA = teamAId.isNotEmpty ? await ref.read(scoringServiceProvider).getTeam(teamAId) : null;
+    final directTeamB = teamBId.isNotEmpty ? await ref.read(scoringServiceProvider).getTeam(teamBId) : null;
+    final teamA = teamMap[teamAId] ?? directTeamA ?? TeamModel(id: teamAId, name: currentMatch.getPlaceholderTeamName(isTeamA: true), shortName: 'TMA');
+    final teamB = teamMap[teamBId] ?? directTeamB ?? TeamModel(id: teamBId, name: currentMatch.getPlaceholderTeamName(isTeamA: false), shortName: 'TMB');
 
     // Determine batting & bowling teams based on toss
     final isTeamAWonToss = _tossWinnerId == teamA.id;
@@ -418,12 +420,15 @@ class _MatchLineupScreenState extends ConsumerState<MatchLineupScreen>
     final allTeams = ref.watch(tournamentTeamsProvider(activeMatchTourId)).value ?? [];
     final teamMap = {for (var t in allTeams) t.id: t};
 
-    final teamA = teamMap[currentMatch.teamAId] ??
-        ref.watch(singleTeamStreamProvider(currentMatch.teamAId)).value ??
-        TeamModel(id: currentMatch.teamAId, name: 'Team A', shortName: 'TMA');
-    final teamB = teamMap[currentMatch.teamBId] ??
-        ref.watch(singleTeamStreamProvider(currentMatch.teamBId)).value ??
-        TeamModel(id: currentMatch.teamBId, name: 'Team B', shortName: 'TMB');
+    final teamAId = currentMatch.teamAId ?? '';
+    final teamBId = currentMatch.teamBId ?? '';
+
+    final teamA = teamMap[teamAId] ??
+        (teamAId.isNotEmpty ? ref.watch(singleTeamStreamProvider(teamAId)).value : null) ??
+        TeamModel(id: teamAId, name: currentMatch.getPlaceholderTeamName(isTeamA: true), shortName: 'TMA');
+    final teamB = teamMap[teamBId] ??
+        (teamBId.isNotEmpty ? ref.watch(singleTeamStreamProvider(teamBId)).value : null) ??
+        TeamModel(id: teamBId, name: currentMatch.getPlaceholderTeamName(isTeamA: false), shortName: 'TMB');
 
     // Dedicated reactive streams for both teams
     final teamAPlayersAsync = ref.watch(teamPlayersStreamProvider(teamA.id));

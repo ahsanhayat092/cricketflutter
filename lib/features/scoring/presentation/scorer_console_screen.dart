@@ -457,7 +457,7 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
 
     final scoringState = ref.watch(liveScoringControllerProvider(widget.matchId));
 
-    if (scoringState.isLoading && scoringState.match.teamAId.isEmpty) {
+    if (scoringState.isLoading && (scoringState.match.teamAId == null || scoringState.match.teamAId!.isEmpty)) {
       return Scaffold(
         appBar: AppBar(
           title: Text(
@@ -497,12 +497,14 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     final allTeams = ref.watch(tournamentTeamsProvider(matchTourId)).value ?? ref.watch(teamsProvider).value ?? [];
     final teamMap = {for (var t in allTeams) t.id: t};
 
-    final teamA = teamMap[match.teamAId] ??
-        ref.watch(singleTeamStreamProvider(match.teamAId)).value ??
-        TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
-    final teamB = teamMap[match.teamBId] ??
-        ref.watch(singleTeamStreamProvider(match.teamBId)).value ??
-        TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+    final teamAId = match.teamAId ?? '';
+    final teamBId = match.teamBId ?? '';
+    final teamA = (teamAId.isNotEmpty ? teamMap[teamAId] : null) ??
+        (teamAId.isNotEmpty ? ref.watch(singleTeamStreamProvider(teamAId)).value : null) ??
+        TeamModel(id: teamAId, name: match.getPlaceholderTeamName(isTeamA: true), shortName: 'TMA');
+    final teamB = (teamBId.isNotEmpty ? teamMap[teamBId] : null) ??
+        (teamBId.isNotEmpty ? ref.watch(singleTeamStreamProvider(teamBId)).value : null) ??
+        TeamModel(id: teamBId, name: match.getPlaceholderTeamName(isTeamA: false), shortName: 'TMB');
 
     final battingTeam = teamMap[innings.battingTeamId] ??
         ref.watch(singleTeamStreamProvider(innings.battingTeamId)).value ??

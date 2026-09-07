@@ -59,8 +59,15 @@ final standingsStreamProvider = StreamProvider<List<StandingWithTeam>>((ref) {
         continue;
       }
 
+      final effectiveGroup = (standing.groupName != null && standing.groupName!.isNotEmpty)
+          ? standing.groupName
+          : (team.groupName.isNotEmpty ? team.groupName : null);
+
       list.add(StandingWithTeam(
-        standing: standing.copyWith(teamId: team.id),
+        standing: standing.copyWith(
+          teamId: team.id,
+          groupName: effectiveGroup,
+        ),
         team: team,
       ));
       processedTeamIds.add(team.id);
@@ -79,6 +86,7 @@ final standingsStreamProvider = StreamProvider<List<StandingWithTeam>>((ref) {
             id: team.id,
             tournamentId: activeTournamentId,
             teamId: team.id,
+            groupName: team.groupName.isNotEmpty ? team.groupName : null,
             position: list.length + 1,
           ),
           team: team,

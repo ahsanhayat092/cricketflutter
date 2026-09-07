@@ -98,8 +98,8 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
                 id: 'inn_${match.id}_1',
                 matchId: match.id,
                 inningsNumber: 1,
-                battingTeamId: match.teamAId,
-                bowlingTeamId: match.teamBId,
+                battingTeamId: match.teamAId ?? '',
+                bowlingTeamId: match.teamBId ?? '',
               );
 
         final matchTourId = match.tournamentId.isNotEmpty ? match.tournamentId : ref.watch(activeTournamentIdProvider);
@@ -110,16 +110,23 @@ class _LiveMatchScreenState extends ConsumerState<LiveMatchScreen> {
         final teamMap = {for (var t in teams) t.id: t};
         final playerMap = {for (var p in players) p.id: p};
 
-        final teamA = teamMap[match.teamAId] ??
-            ref.watch(singleTeamStreamProvider(match.teamAId)).value ??
-            (match.teamAId.isNotEmpty
-                ? TeamModel(id: match.teamAId, name: 'Team ${match.teamAId.substring(0, match.teamAId.length.clamp(1, 4))}', shortName: match.teamAId.substring(0, match.teamAId.length.clamp(1, 3)).toUpperCase())
-                : const TeamModel(id: '', name: 'TBD', shortName: 'TBD'));
-        final teamB = teamMap[match.teamBId] ??
-            ref.watch(singleTeamStreamProvider(match.teamBId)).value ??
-            (match.teamBId.isNotEmpty
-                ? TeamModel(id: match.teamBId, name: 'Team ${match.teamBId.substring(0, match.teamBId.length.clamp(1, 4))}', shortName: match.teamBId.substring(0, match.teamBId.length.clamp(1, 3)).toUpperCase())
-                : const TeamModel(id: '', name: 'TBD', shortName: 'TBD'));
+        final teamAId = match.teamAId ?? '';
+        final teamBId = match.teamBId ?? '';
+
+        final teamA = (teamAId.isNotEmpty ? teamMap[teamAId] : null) ??
+            (teamAId.isNotEmpty ? ref.watch(singleTeamStreamProvider(teamAId)).value : null) ??
+            TeamModel(
+              id: teamAId,
+              name: match.getPlaceholderTeamName(isTeamA: true),
+              shortName: match.getPlaceholderTeamName(isTeamA: true).startsWith('TBD') ? 'TBD' : 'TMA',
+            );
+        final teamB = (teamBId.isNotEmpty ? teamMap[teamBId] : null) ??
+            (teamBId.isNotEmpty ? ref.watch(singleTeamStreamProvider(teamBId)).value : null) ??
+            TeamModel(
+              id: teamBId,
+              name: match.getPlaceholderTeamName(isTeamA: false),
+              shortName: match.getPlaceholderTeamName(isTeamA: false).startsWith('TBD') ? 'TBD' : 'TMB',
+            );
 
         final battingTeam = teamMap[currentInnings.battingTeamId] ??
             ref.watch(singleTeamStreamProvider(currentInnings.battingTeamId)).value ??

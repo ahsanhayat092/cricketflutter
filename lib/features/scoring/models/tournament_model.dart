@@ -43,6 +43,11 @@ class TournamentModel {
   final String? venueMapsUrl;
   final String status; // 'UPCOMING' | 'LIVE' | 'COMPLETED'
   final String playoffFormat; // 'DIRECT_TOP2' | 'PAGE_PLAYOFF_TOP3' | 'IPL_TOP4' | 'SEMI_FINALS'
+  final String stageFormat; // 'ROUND_ROBIN' | 'GROUPS_AND_KNOCKOUT'
+  final String? groupPlayoffFormat; // 'GROUP_SEMI_FINALS' | 'GROUP_DIRECT_FINAL'
+  final List<String>? groups; // e.g. ['A', 'B']
+  final int? groupCount; // e.g. 2
+  final int teamsPerGroupAdvance; // default 2
   final int winPoints;
   final int tiePoints;
   final int noResultPoints;
@@ -70,6 +75,11 @@ class TournamentModel {
     this.venueMapsUrl,
     this.status = 'LIVE',
     this.playoffFormat = 'PAGE_PLAYOFF_TOP3',
+    this.stageFormat = 'ROUND_ROBIN',
+    this.groupPlayoffFormat,
+    this.groups,
+    this.groupCount,
+    this.teamsPerGroupAdvance = 2,
     this.winPoints = 2,
     this.tiePoints = 1,
     this.noResultPoints = 1,
@@ -78,6 +88,8 @@ class TournamentModel {
     this.createdAt,
     this.updatedAt,
   });
+
+  bool get isGroupsAndKnockout => stageFormat == 'GROUPS_AND_KNOCKOUT';
 
   MatchRulesModel get rules => MatchRulesModel(
         formatType: formatType,
@@ -148,6 +160,9 @@ class TournamentModel {
         ? explicitMaxBowler
         : AppConstants.getMaxOverPerBowler(oversPerSide: overs);
 
+    final rawGroups = data['groups'] as List<dynamic>?;
+    final List<String>? groupsList = rawGroups?.map((e) => e.toString()).toList();
+
     return TournamentModel(
       id: id,
       name: data['name'] as String? ?? 'Cricket Tournament',
@@ -167,6 +182,11 @@ class TournamentModel {
       venueMapsUrl: data['venueMapsUrl'] as String? ?? data['venue_maps_url'] as String?,
       status: data['status'] as String? ?? 'LIVE',
       playoffFormat: data['playoffFormat'] as String? ?? data['playoff_format'] as String? ?? 'PAGE_PLAYOFF_TOP3',
+      stageFormat: data['stageFormat'] as String? ?? data['stage_format'] as String? ?? 'ROUND_ROBIN',
+      groupPlayoffFormat: data['groupPlayoffFormat'] as String? ?? data['group_playoff_format'] as String?,
+      groups: groupsList,
+      groupCount: (data['groupCount'] as num?)?.toInt() ?? (data['group_count'] as num?)?.toInt() ?? groupsList?.length,
+      teamsPerGroupAdvance: (data['teamsPerGroupAdvance'] as num?)?.toInt() ?? (data['teams_per_group_advance'] as num?)?.toInt() ?? 2,
       winPoints: (data['winPoints'] as num?)?.toInt() ?? 2,
       tiePoints: (data['tiePoints'] as num?)?.toInt() ?? 1,
       noResultPoints: (data['noResultPoints'] as num?)?.toInt() ?? 1,
@@ -199,6 +219,11 @@ class TournamentModel {
       if (venueMapsUrl != null) 'venueMapsUrl': venueMapsUrl,
       'status': status,
       'playoffFormat': playoffFormat,
+      'stageFormat': stageFormat,
+      if (groupPlayoffFormat != null) 'groupPlayoffFormat': groupPlayoffFormat,
+      if (groups != null) 'groups': groups,
+      if (groupCount != null) 'groupCount': groupCount,
+      'teamsPerGroupAdvance': teamsPerGroupAdvance,
       'winPoints': winPoints,
       'tiePoints': tiePoints,
       'noResultPoints': noResultPoints,
@@ -230,6 +255,11 @@ class TournamentModel {
     String? venueMapsUrl,
     String? status,
     String? playoffFormat,
+    String? stageFormat,
+    String? groupPlayoffFormat,
+    List<String>? groups,
+    int? groupCount,
+    int? teamsPerGroupAdvance,
     int? winPoints,
     int? tiePoints,
     int? noResultPoints,
@@ -257,6 +287,11 @@ class TournamentModel {
       venueMapsUrl: venueMapsUrl ?? this.venueMapsUrl,
       status: status ?? this.status,
       playoffFormat: playoffFormat ?? this.playoffFormat,
+      stageFormat: stageFormat ?? this.stageFormat,
+      groupPlayoffFormat: groupPlayoffFormat ?? this.groupPlayoffFormat,
+      groups: groups ?? this.groups,
+      groupCount: groupCount ?? this.groupCount,
+      teamsPerGroupAdvance: teamsPerGroupAdvance ?? this.teamsPerGroupAdvance,
       winPoints: winPoints ?? this.winPoints,
       tiePoints: tiePoints ?? this.tiePoints,
       noResultPoints: noResultPoints ?? this.noResultPoints,

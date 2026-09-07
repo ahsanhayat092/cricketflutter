@@ -4,15 +4,26 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../match_management/providers/tournament_providers.dart';
+import '../../scoring/models/tournament_model.dart';
 import '../models/standing.dart';
 import '../providers/standings_provider.dart';
 
-class StandingsScreen extends ConsumerWidget {
+class StandingsScreen extends ConsumerStatefulWidget {
   const StandingsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StandingsScreen> createState() => _StandingsScreenState();
+}
+
+class _StandingsScreenState extends ConsumerState<StandingsScreen> {
+  String _selectedGroupTab = 'ALL'; // 'ALL' | 'A' | 'B'
+
+  @override
+  Widget build(BuildContext context) {
     final standingsAsync = ref.watch(standingsStreamProvider);
+    final tournamentAsync = ref.watch(activeTournamentProvider);
+    final tournament = tournamentAsync.value;
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -67,13 +78,63 @@ class StandingsScreen extends ConsumerWidget {
               ),
             ),
           ),
-          data: (standingsList) => _buildStandingsContent(context, standingsList),
+          data: (standingsList) => _buildStandingsContent(context, standingsList, tournament),
         ),
       ),
     );
   }
 
-  Widget _buildStandingsContent(BuildContext context, List<StandingWithTeam> list) {
+  Widget _buildStandingsContent(
+    BuildContext context,
+    List<StandingWithTeam> list,
+    TournamentModel? tournament,
+  ) {
+    final isGroupFormat = tournament?.isGroupsAndKnockout == true ||
+        (tournament?.groups != null && tournament!.groups!.isNotEmpty);
+    final advanceCount = tournament?.teamsPerGroupAdvance ?? 2;
+
+    String subtitle;
+    if (isGroupFormat) {
+      if (tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL') {
+        subtitle = 'Top 1 from each group qualifies directly for the Grand Final';
+      } else {
+        subtitle = 'Top $advanceCount from Group A & Group B qualify for Semi-Finals';
+      }
+    } else {
+      subtitle = 'Top 2 teams qualify directly for the Grand Final';
+    }
+
+    final groupA = list.where((item) {
+      final g = item.standing.groupName ?? item.team?.groupName ?? 'A';
+      return g.toUpperCase() == 'A';
+    }).toList();
+
+    final groupB = list.where((item) {
+      final g = item.standing.groupName ?? item.team?.groupName ?? 'B';
+      return g.toUpperCase() == 'B';
+    }).toList();
+
+    // Sort group-scoped by position, then points, then NRR
+    groupA.sort((a, b) {
+      if (a.standing.position != b.standing.position) {
+        return a.standing.position.compareTo(b.standing.position);
+      }
+      if (b.standing.points != a.standing.points) {
+        return b.standing.points.compareTo(a.standing.points);
+      }
+      return b.standing.nrr.compareTo(a.standing.nrr);
+    });
+
+    groupB.sort((a, b) {
+      if (a.standing.position != b.standing.position) {
+        return a.standing.position.compareTo(b.standing.position);
+      }
+      if (b.standing.points != a.standing.points) {
+        return b.standing.points.compareTo(a.standing.points);
+      }
+      return b.standing.nrr.compareTo(a.standing.nrr);
+    });
+
     return SingleChildScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
@@ -109,15 +170,16 @@ class StandingsScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'WASA Premier League 2026',
+                        tournament?.name ?? 'Cricket Tournament',
                         style: GoogleFonts.outfit(
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: FontWeight.bold,
                           color: AppColors.accentCyan,
                         ),
                       ),
+                      const SizedBox(height: 2),
                       Text(
-                        'Top 2 teams qualify directly for the Grand Final',
+                        subtitle,
                         style: GoogleFonts.outfit(
                           fontSize: 13,
                           fontWeight: FontWeight.w800,
@@ -131,36 +193,81 @@ class StandingsScreen extends ConsumerWidget {
             ),
           ),
 
+          // Champion Banner if crowned
+          if (tournament?.championTeamId != null && tournament!.championTeamId!.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            _buildChampionBanner(list, tournament.championTeamId!),
+          ],
+
           const SizedBox(height: 16),
 
-          // 2. Standings Table Container
-          Container(
-            decoration: BoxDecoration(
-              color: AppColors.cardBackground,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.25),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
+          // 2. Format specific tables
+          if (isGroupFormat) ...[
+            // Group Filter Pills
+            Row(
               children: [
-                _buildTableHeader(),
-                const Divider(height: 1, color: Colors.white10),
-                ...list.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final item = entry.value;
-                  return _buildTableRow(index + 1, item, isLast: index == list.length - 1);
-                }),
+                _buildGroupFilterPill('ALL', 'All Groups'),
+                const SizedBox(width: 8),
+                _buildGroupFilterPill('A', 'Group A (${groupA.length})'),
+                const SizedBox(width: 8),
+                _buildGroupFilterPill('B', 'Group B (${groupB.length})'),
               ],
             ),
-          ),
+            const SizedBox(height: 16),
 
-          const SizedBox(height: 20),
+            if (_selectedGroupTab == 'ALL' || _selectedGroupTab == 'A') ...[
+              _buildGroupSection(
+                groupName: 'Group A',
+                items: groupA,
+                advanceCount: advanceCount,
+                qualificationLabel: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL' ? 'Final (Q)' : 'Semi-Final (Q)',
+              ),
+              const SizedBox(height: 20),
+            ],
+
+            if (_selectedGroupTab == 'ALL' || _selectedGroupTab == 'B') ...[
+              _buildGroupSection(
+                groupName: 'Group B',
+                items: groupB,
+                advanceCount: advanceCount,
+                qualificationLabel: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL' ? 'Final (Q)' : 'Semi-Final (Q)',
+              ),
+              const SizedBox(height: 20),
+            ],
+          ] else ...[
+            // Standard Unified Table
+            Container(
+              decoration: BoxDecoration(
+                color: AppColors.cardBackground,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.25),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  _buildTableHeader(),
+                  const Divider(height: 1, color: Colors.white10),
+                  ...list.asMap().entries.map((entry) {
+                    final index = entry.key;
+                    final item = entry.value;
+                    return _buildTableRow(
+                      index + 1,
+                      item,
+                      isLast: index == list.length - 1,
+                      isQualifiedZone: index < 2,
+                    );
+                  }),
+                ],
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
 
           // 3. Points Rules & Tiebreaker System Card
           Container(
@@ -178,7 +285,7 @@ class StandingsScreen extends ConsumerWidget {
                     const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.accent),
                     const SizedBox(width: 6),
                     Text(
-                      'TOURNAMENT SCORING & NRR RULES',
+                      'CENTRAL BRAIN SCORING & NRR RULES',
                       style: GoogleFonts.outfit(
                         fontSize: 11,
                         fontWeight: FontWeight.w900,
@@ -193,14 +300,176 @@ class StandingsScreen extends ConsumerWidget {
                 _buildLegendItem('Tie / No Result', '1 Point'),
                 _buildLegendItem('Loss', '0 Points'),
                 _buildLegendItem(
-                  'Net Run Rate (NRR)',
-                  '(Runs Scored / Overs Faced) - (Runs Conceded / Overs Bowled)',
+                  'ICC Net Run Rate (NRR)',
+                  '(Total Runs Scored / Overs Faced) - (Total Runs Conceded / Overs Bowled)',
                 ),
                 _buildLegendItem('Tiebreaker', 'Points > Higher NRR > Head to Head'),
+                if (isGroupFormat)
+                  _buildLegendItem('Knockout Bracket', 'A1 vs B2 & B1 vs A2 (Winners advance to Grand Final)'),
               ],
             ),
           ),
           const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupFilterPill(String tabKey, String label) {
+    final isSelected = _selectedGroupTab == tabKey;
+    return InkWell(
+      onTap: () => setState(() => _selectedGroupTab = tabKey),
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.accent : AppColors.surfaceLight,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppColors.accent : Colors.white10,
+          ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.outfit(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.black : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChampionBanner(List<StandingWithTeam> list, String championId) {
+    final champ = list.firstWhere(
+      (item) => item.team?.id == championId || item.standing.teamId == championId,
+      orElse: () => list.first,
+    );
+    final name = champ.team?.name ?? champ.standing.teamName ?? 'Champion';
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.gold.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.gold, width: 1.5),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.emoji_events_rounded, color: AppColors.gold, size: 24),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'TOURNAMENT CHAMPION',
+                  style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.gold, letterSpacing: 0.5),
+                ),
+                Text(
+                  name,
+                  style: GoogleFonts.outfit(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildGroupSection({
+    required String groupName,
+    required List<StandingWithTeam> items,
+    required int advanceCount,
+    required String qualificationLabel,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      groupName.toUpperCase(),
+                      style: GoogleFonts.outfit(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.completedGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: AppColors.completedGreen.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    'Top $advanceCount Qualify',
+                    style: GoogleFonts.outfit(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.completedGreen,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: Colors.white10),
+          _buildTableHeader(),
+          const Divider(height: 1, color: Colors.white10),
+          if (items.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Center(
+                child: Text('No teams in $groupName', style: GoogleFonts.outfit(color: AppColors.textMuted)),
+              ),
+            )
+          else
+            ...items.asMap().entries.map((entry) {
+              final index = entry.key;
+              final item = entry.value;
+              final isQualZone = index < advanceCount;
+              return _buildTableRow(
+                index + 1,
+                item,
+                isLast: index == items.length - 1,
+                isQualifiedZone: isQualZone,
+                qualificationLabel: qualificationLabel,
+              );
+            }),
         ],
       ),
     );
@@ -228,14 +497,21 @@ class StandingsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildTableRow(int pos, StandingWithTeam item, {required bool isLast}) {
+  Widget _buildTableRow(
+    int pos,
+    StandingWithTeam item, {
+    required bool isLast,
+    bool isQualifiedZone = false,
+    String? qualificationLabel,
+  }) {
     final s = item.standing;
-    final isTopTwo = pos <= 2;
+    final isQualified = s.status == 'QUALIFIED_PLAYOFF' || isQualifiedZone;
+    final isEliminated = s.status == 'ELIMINATED';
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: isTopTwo ? AppColors.accent.withValues(alpha: 0.04) : Colors.transparent,
+        color: isQualified ? AppColors.accent.withValues(alpha: 0.04) : Colors.transparent,
         border: isLast ? null : Border(bottom: BorderSide(color: Colors.white.withValues(alpha: 0.05))),
       ),
       child: Row(
@@ -254,7 +530,7 @@ class StandingsScreen extends ConsumerWidget {
                     style: GoogleFonts.outfit(
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
-                      color: isTopTwo ? AppColors.accent : AppColors.textMuted,
+                      color: isQualified ? AppColors.accent : AppColors.textMuted,
                     ),
                   ),
                 ),
@@ -295,9 +571,34 @@ class StandingsScreen extends ConsumerWidget {
                               color: AppColors.textPrimary,
                             ),
                           ),
-                          if (isTopTwo) ...[
+                          if (isQualified) ...[
                             const SizedBox(width: 4),
-                            const Icon(Icons.star_rounded, size: 12, color: AppColors.gold),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppColors.completedGreen.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.completedGreen.withValues(alpha: 0.4), width: 0.8),
+                              ),
+                              child: Text(
+                                qualificationLabel ?? 'Q',
+                                style: GoogleFonts.outfit(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.completedGreen),
+                              ),
+                            ),
+                          ] else if (isEliminated) ...[
+                            const SizedBox(width: 4),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                              decoration: BoxDecoration(
+                                color: AppColors.wicket.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(color: AppColors.wicket.withValues(alpha: 0.4), width: 0.8),
+                              ),
+                              child: Text(
+                                'Eliminated',
+                                style: GoogleFonts.outfit(fontSize: 7, fontWeight: FontWeight.w800, color: AppColors.wicket),
+                              ),
+                            ),
                           ],
                         ],
                       ),
@@ -361,7 +662,7 @@ class StandingsScreen extends ConsumerWidget {
               style: GoogleFonts.outfit(
                 fontSize: 15,
                 fontWeight: FontWeight.w900,
-                color: isTopTwo ? AppColors.accent : AppColors.textPrimary,
+                color: isQualified ? AppColors.accent : AppColors.textPrimary,
               ),
             ),
           ),

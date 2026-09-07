@@ -256,8 +256,23 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
       separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
         final match = matches[index];
-        final teamA = teamMap[match.teamAId] ?? TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
-        final teamB = teamMap[match.teamBId] ?? TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+        final tournament = ref.watch(activeTournamentProvider).value;
+
+        final nameA = (match.teamAId != null && match.teamAId!.isNotEmpty)
+            ? (teamMap[match.teamAId]?.name ?? 'Team A')
+            : match.getPlaceholderTeamName(isTeamA: true, groupPlayoffFormat: tournament?.groupPlayoffFormat);
+        final shortA = (match.teamAId != null && match.teamAId!.isNotEmpty)
+            ? (teamMap[match.teamAId]?.shortName ?? 'TMA')
+            : 'TBD';
+        final teamA = teamMap[match.teamAId] ?? TeamModel(id: match.teamAId ?? '', name: nameA, shortName: shortA);
+
+        final nameB = (match.teamBId != null && match.teamBId!.isNotEmpty)
+            ? (teamMap[match.teamBId]?.name ?? 'Team B')
+            : match.getPlaceholderTeamName(isTeamA: false, groupPlayoffFormat: tournament?.groupPlayoffFormat);
+        final shortB = (match.teamBId != null && match.teamBId!.isNotEmpty)
+            ? (teamMap[match.teamBId]?.shortName ?? 'TMB')
+            : 'TBD';
+        final teamB = teamMap[match.teamBId] ?? TeamModel(id: match.teamBId ?? '', name: nameB, shortName: shortB);
 
         return _MatchCard(
           match: match,
@@ -295,15 +310,19 @@ class _MatchCard extends ConsumerWidget {
     final inn1 = inningsList.isNotEmpty ? inningsList.firstWhere((i) => i.inningsNumber == 1, orElse: () => inningsList.first) : null;
     final inn2 = inningsList.length > 1 ? inningsList.firstWhere((i) => i.inningsNumber == 2, orElse: () => inningsList.last) : null;
 
-    final resolvedTeamA = teamA.name.isNotEmpty && !teamA.name.startsWith('Team ')
-        ? teamA
-        : (ref.watch(singleTeamStreamProvider(match.teamAId)).value ?? teamA);
-    final resolvedTeamB = teamB.name.isNotEmpty && !teamB.name.startsWith('Team ')
-        ? teamB
-        : (ref.watch(singleTeamStreamProvider(match.teamBId)).value ?? teamB);
+    final resolvedTeamA = (match.teamAId != null && match.teamAId!.isNotEmpty)
+        ? ((teamA.name.isNotEmpty && !teamA.name.startsWith('Team '))
+            ? teamA
+            : (ref.watch(singleTeamStreamProvider(match.teamAId!)).value ?? teamA))
+        : teamA;
+    final resolvedTeamB = (match.teamBId != null && match.teamBId!.isNotEmpty)
+        ? ((teamB.name.isNotEmpty && !teamB.name.startsWith('Team '))
+            ? teamB
+            : (ref.watch(singleTeamStreamProvider(match.teamBId!)).value ?? teamB))
+        : teamB;
 
-    final isWinnerA = match.winningTeamId == resolvedTeamA.id;
-    final isWinnerB = match.winningTeamId == resolvedTeamB.id;
+    final isWinnerA = match.winningTeamId != null && match.winningTeamId!.isNotEmpty && match.winningTeamId == resolvedTeamA.id;
+    final isWinnerB = match.winningTeamId != null && match.winningTeamId!.isNotEmpty && match.winningTeamId == resolvedTeamB.id;
 
     return Container(
       decoration: BoxDecoration(
@@ -330,6 +349,16 @@ class _MatchCard extends ConsumerWidget {
           borderRadius: BorderRadius.circular(16),
           onTap: () async {
             if (match.isUpcoming) {
+              if (match.teamAId == null || match.teamBId == null || match.teamAId!.isEmpty || match.teamBId!.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Teams have not yet qualified for this knockout match.'),
+                    backgroundColor: AppColors.cardBackground,
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+                return;
+              }
               if (isMatchScorable) {
                 Navigator.push(
                   context,
@@ -378,14 +407,19 @@ class _MatchCard extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '${match.stage} • MATCH #${match.matchNumber} • ${match.day}',
-                      style: GoogleFonts.outfit(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.textMuted,
+                    Expanded(
+                      child: Text(
+                        '${match.stageDisplayName.toUpperCase()} • MATCH #${match.matchNumber} • ${match.day}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.outfit(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textMuted,
+                        ),
                       ),
                     ),
+                    const SizedBox(width: 8),
                     Row(
                       children: [
                         IconButton(

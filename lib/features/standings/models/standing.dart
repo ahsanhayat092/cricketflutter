@@ -7,6 +7,7 @@ class StandingModel {
   final String id;
   final String tournamentId;
   final String teamId;
+  final String? groupName; // "A" | "B" | null
   final int played;
   final int won;
   final int lost;
@@ -20,6 +21,7 @@ class StandingModel {
   final double nrr;
   final int position;
   final bool qualified;
+  final String status; // "QUALIFIED_PLAYOFF" | "ELIMINATED" | "ACTIVE"
   final int adminTiebreak;
   final List<String> form;
   final String? teamName;
@@ -31,6 +33,7 @@ class StandingModel {
     this.id = '',
     this.tournamentId = 'main',
     required this.teamId,
+    this.groupName,
     this.played = 0,
     this.won = 0,
     this.lost = 0,
@@ -44,6 +47,7 @@ class StandingModel {
     this.nrr = 0.0,
     this.position = 1,
     this.qualified = false,
+    this.status = 'ACTIVE',
     this.adminTiebreak = 0,
     this.form = const [],
     this.teamName,
@@ -51,6 +55,8 @@ class StandingModel {
     this.logoUrl,
     this.updatedAt,
   });
+
+  double get netRunRate => nrr;
 
   String get nrrFormatted {
     if (nrr > 0) return '+${nrr.toStringAsFixed(3)}';
@@ -87,10 +93,14 @@ class StandingModel {
         (data['team_logo_url'] as String?) ??
         (data['logo'] as String?);
 
+    final rawStatus = (data['status'] as String?)?.toUpperCase().trim();
+    final isQualified = data['qualified'] as bool? ?? (rawStatus == 'QUALIFIED_PLAYOFF');
+
     return StandingModel(
       id: docId,
       tournamentId: data['tournamentId'] as String? ?? 'main',
       teamId: data['teamId'] as String? ?? docId,
+      groupName: (data['groupName'] as String?) ?? (data['group_name'] as String?) ?? (data['group'] as String?),
       played: (data['played'] as num?)?.toInt() ?? 0,
       won: (data['won'] as num?)?.toInt() ?? 0,
       lost: (data['lost'] as num?)?.toInt() ?? 0,
@@ -103,7 +113,8 @@ class StandingModel {
       ballsAgainst: (data['ballsAgainst'] as num?)?.toInt() ?? 0,
       nrr: (data['nrr'] as num?)?.toDouble() ?? (data['netRunRate'] as num?)?.toDouble() ?? 0.0,
       position: (data['position'] as num?)?.toInt() ?? 1,
-      qualified: data['qualified'] as bool? ?? false,
+      qualified: isQualified,
+      status: rawStatus ?? (isQualified ? 'QUALIFIED_PLAYOFF' : 'ACTIVE'),
       adminTiebreak: (data['adminTiebreak'] as num?)?.toInt() ?? 0,
       form: formList,
       teamName: rawTeamName,
@@ -120,6 +131,7 @@ class StandingModel {
     return {
       'tournamentId': tournamentId,
       'teamId': teamId,
+      if (groupName != null) 'groupName': groupName,
       'played': played,
       'won': won,
       'lost': lost,
@@ -131,8 +143,10 @@ class StandingModel {
       'runsAgainst': runsAgainst,
       'ballsAgainst': ballsAgainst,
       'nrr': nrr,
+      'netRunRate': nrr,
       'position': position,
       'qualified': qualified,
+      'status': status,
       'adminTiebreak': adminTiebreak,
       'form': form,
       if (teamName != null) 'teamName': teamName,
@@ -148,6 +162,7 @@ class StandingModel {
     String? id,
     String? tournamentId,
     String? teamId,
+    String? groupName,
     int? played,
     int? won,
     int? lost,
@@ -161,6 +176,7 @@ class StandingModel {
     double? nrr,
     int? position,
     bool? qualified,
+    String? status,
     int? adminTiebreak,
     List<String>? form,
     String? teamName,
@@ -172,6 +188,7 @@ class StandingModel {
       id: id ?? this.id,
       tournamentId: tournamentId ?? this.tournamentId,
       teamId: teamId ?? this.teamId,
+      groupName: groupName ?? this.groupName,
       played: played ?? this.played,
       won: won ?? this.won,
       lost: lost ?? this.lost,
@@ -185,6 +202,7 @@ class StandingModel {
       nrr: nrr ?? this.nrr,
       position: position ?? this.position,
       qualified: qualified ?? this.qualified,
+      status: status ?? this.status,
       adminTiebreak: adminTiebreak ?? this.adminTiebreak,
       form: form ?? this.form,
       teamName: teamName ?? this.teamName,

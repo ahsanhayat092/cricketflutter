@@ -257,8 +257,12 @@ class _LiveMatchHubScreenState extends ConsumerState<LiveMatchHubScreen> {
   }
 
   Widget _buildUpcomingCard(BuildContext context, MatchModel match, Map<String, TeamModel> teamMap) {
-    final teamA = teamMap[match.teamAId] ?? TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
-    final teamB = teamMap[match.teamBId] ?? TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+    final nameA = match.getPlaceholderTeamName(isTeamA: true);
+    final nameB = match.getPlaceholderTeamName(isTeamA: false);
+    final teamA = (match.teamAId != null ? teamMap[match.teamAId!] : null) ??
+        TeamModel(id: match.teamAId ?? '', name: nameA, shortName: nameA.startsWith('TBD') ? 'TBD' : 'TMA');
+    final teamB = (match.teamBId != null ? teamMap[match.teamBId!] : null) ??
+        TeamModel(id: match.teamBId ?? '', name: nameB, shortName: nameB.startsWith('TBD') ? 'TBD' : 'TMB');
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -280,7 +284,7 @@ class _LiveMatchHubScreenState extends ConsumerState<LiveMatchHubScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '${match.stage} • MATCH #${match.matchNumber}',
+                  match.stageDisplayName.toUpperCase(),
                   style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.accentCyan),
                 ),
               ),
@@ -375,8 +379,10 @@ class _LiveMatchHubScreenState extends ConsumerState<LiveMatchHubScreen> {
   }
 
   Widget _buildCompletedCard(BuildContext context, MatchModel match, Map<String, TeamModel> teamMap) {
-    final teamA = teamMap[match.teamAId] ?? TeamModel(id: match.teamAId, name: 'Team A', shortName: 'TMA');
-    final teamB = teamMap[match.teamBId] ?? TeamModel(id: match.teamBId, name: 'Team B', shortName: 'TMB');
+    final teamA = (match.teamAId != null ? teamMap[match.teamAId!] : null) ??
+        TeamModel(id: match.teamAId ?? '', name: 'Team A', shortName: 'TMA');
+    final teamB = (match.teamBId != null ? teamMap[match.teamBId!] : null) ??
+        TeamModel(id: match.teamBId ?? '', name: 'Team B', shortName: 'TMB');
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -392,7 +398,7 @@ class _LiveMatchHubScreenState extends ConsumerState<LiveMatchHubScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                '${match.stage} • MATCH #${match.matchNumber}',
+                match.stageDisplayName.toUpperCase(),
                 style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textMuted),
               ),
               Container(

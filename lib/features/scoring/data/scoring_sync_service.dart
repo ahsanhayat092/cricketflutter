@@ -233,6 +233,18 @@ class ScoringSyncService {
     try {
       await ensureAuthenticated();
 
+      // Central Backend Brain handles official ICC NRR, Group A & B partitioning, and knockout advancement.
+      // Do not overwrite backend-managed standings from client code.
+      final tourDoc = await _firestore.doc(FirestorePaths.tournament(tournamentId)).get();
+      if (tourDoc.exists) {
+        final data = tourDoc.data();
+        final stageFormat = data?['stageFormat'] as String?;
+        if (stageFormat == 'GROUPS_AND_KNOCKOUT') {
+          debugPrint('[ScoringSyncService] Skipping client standings calculation: managed by Central Backend Brain ($stageFormat).');
+          return;
+        }
+      }
+
       // 1. Fetch all teams in tournament
       final teamsSnap = await _firestore
           .collection(FirestorePaths.teams)
