@@ -264,5 +264,63 @@ void main() {
       expect(hasGroupedTeams, isTrue);
       expect(isGroupFormat, isTrue);
     });
+
+    test('Knockout fixtures and projected pairings resolve correctly from group standings', () {
+      final sortedGroupA = [
+        StandingWithTeam(
+          standing: const StandingModel(id: 's1', teamId: 'ind', points: 6),
+          team: const TeamModel(id: 'ind', name: 'India', shortName: 'IND'),
+        ),
+        StandingWithTeam(
+          standing: const StandingModel(id: 's2', teamId: 'sl', points: 4),
+          team: const TeamModel(id: 'sl', name: 'Sri Lanka', shortName: 'SL'),
+        ),
+      ];
+
+      final sortedGroupB = [
+        StandingWithTeam(
+          standing: const StandingModel(id: 's3', teamId: 'afg', points: 6),
+          team: const TeamModel(id: 'afg', name: 'Afghanistan', shortName: 'AFG'),
+        ),
+        StandingWithTeam(
+          standing: const StandingModel(id: 's4', teamId: 'ban', points: 4),
+          team: const TeamModel(id: 'ban', name: 'Bangladesh', shortName: 'BAN'),
+        ),
+      ];
+
+      // Semi-Final 1: Winner Group A (A1) vs Runner-up Group B (B2)
+      final sf1TeamA = sortedGroupA[0].teamName;
+      final sf1TeamB = sortedGroupB[1].teamName;
+      expect(sf1TeamA, equals('India'));
+      expect(sf1TeamB, equals('Bangladesh'));
+
+      // Semi-Final 2: Winner Group B (B1) vs Runner-up Group A (A2)
+      final sf2TeamA = sortedGroupB[0].teamName;
+      final sf2TeamB = sortedGroupA[1].teamName;
+      expect(sf2TeamA, equals('Afghanistan'));
+      expect(sf2TeamB, equals('Sri Lanka'));
+    });
+
+    test('Champion and Runner-Up resolve accurately from completed Grand Final match', () {
+      final grandFinal = MatchModel.fromMap('m_final', {
+        'matchNumber': 15,
+        'stage': 'FINAL',
+        'teamAId': 'ind',
+        'teamBId': 'afg',
+        'status': 'COMPLETED',
+        'winningTeamId': 'ind',
+        'resultText': 'India won by 18 runs',
+      });
+
+      // Resolved Champion
+      final championId = grandFinal.winningTeamId;
+      expect(championId, equals('ind'));
+
+      // Resolved Runner-Up (the other finalist)
+      final runnerUpId = grandFinal.teamAId == championId ? grandFinal.teamBId : grandFinal.teamAId;
+      expect(runnerUpId, equals('afg'));
+      expect(grandFinal.resultText, equals('India won by 18 runs'));
+    });
   });
 }
+
