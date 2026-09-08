@@ -1,4 +1,5 @@
 import '../../../core/constants/app_constants.dart';
+import '../../../core/models/tournament_config.dart';
 import '../../../core/utils/firestore_helper.dart';
 import 'match_rules_model.dart';
 
@@ -54,6 +55,8 @@ class TournamentModel {
   final int noResultPoints;
   final int lossPoints;
   final String? championTeamId;
+  final TournamentConfig? config;
+  final UiPresentationConfig? uiPresentation;
   final String? createdAt;
   final String? updatedAt;
 
@@ -86,23 +89,37 @@ class TournamentModel {
     this.noResultPoints = 1,
     this.lossPoints = 0,
     this.championTeamId,
+    this.config,
+    this.uiPresentation,
     this.createdAt,
     this.updatedAt,
   });
 
-  bool get isGroupsAndKnockout => stageFormat == 'GROUPS_AND_KNOCKOUT';
+  bool get isGroupsAndKnockout =>
+      (config?.groupsStage != null) ||
+      (uiPresentation?.isGroupedTabs == true) ||
+      (stageFormat == 'GROUPS_AND_KNOCKOUT') ||
+      (groups != null && groups!.isNotEmpty) ||
+      (groupCount != null && groupCount! > 1);
 
-  MatchRulesModel get rules => MatchRulesModel(
-        formatType: formatType,
-        oversPerSide: oversPerSide,
-        maxOverPerBowler: maxOverPerBowler,
-        playersPerTeam: playersPerTeam,
-        maxWickets: maxWickets,
-        allowLastManStanding: allowLastManStanding,
-        freeHitEnabled: true,
-        noBallRuns: 1,
-        wideRuns: 1,
-      );
+  MatchRulesModel get rules {
+    if (config != null) {
+      return MatchRulesModel.fromConfig(config!.matchRules, formatType: formatType);
+    }
+    return MatchRulesModel(
+      formatType: formatType,
+      oversPerSide: oversPerSide,
+      maxOverPerBowler: maxOverPerBowler,
+      playersPerTeam: playersPerTeam,
+      maxWickets: maxWickets,
+      allowLastManStanding: allowLastManStanding,
+      freeHitEnabled: true,
+      noBallRuns: 1,
+      noBallReball: true,
+      wideRuns: 1,
+      wideReball: true,
+    );
+  }
 
   bool isPinValid(String pin) => pin.trim() == scorerPin.trim();
 
@@ -110,6 +127,12 @@ class TournamentModel {
 
   String get shareWhatsAppText =>
       '🏏 Follow *$name* on PitchPe!\n📊 Live Scores & Standings: $shareUrl';
+
+  int get effectiveTeamsPerGroupAdvance =>
+      config?.groupsStage?.groups.isNotEmpty == true
+          ? config!.groupsStage!.groups.first.qualifyingSlots
+          : teamsPerGroupAdvance;
+
 
   factory TournamentModel.fromMap(Map<String, dynamic>? data, {String id = 'main'}) {
     if (data == null) {
@@ -120,15 +143,25 @@ class TournamentModel {
         slug: 'cricket-tournament',
       );
     }
-    final formatType = data['formatType'] as String? ?? 'TAPE_BALL_INDOOR';
-    final overs = (data['oversPerSide'] as num?)?.toInt() ??
+
+    final configData = data['config'] as Map<String, dynamic>?;
+    final config = configData != null ? TournamentConfig.fromMap(configData) : null;
+
+    final uiPresData = (data['uiPresentation'] as Map<String, dynamic>?) ??
+        (data['ui_presentation'] as Map<String, dynamic>?);
+    final uiPresentation = uiPresData != null ? UiPresentationConfig.fromMap(uiPresData) : null;
+
+    final formatType = config?.meta.preset ?? data['formatType'] as String? ?? 'TAPE_BALL_INDOOR';
+    final overs = config?.matchRules.oversPerSide ??
+        (data['oversPerSide'] as num?)?.toInt() ??
         (data['overs_per_side'] as num?)?.toInt() ??
         (data['overs'] as num?)?.toInt() ??
         (data['maxOvers'] as num?)?.toInt() ??
         (formatType == 'T20' ? 20 : (formatType == 'T10' ? 10 : 4));
 
     final defaultPlayers = (formatType == 'T20' || formatType == 'T10' || formatType == 'ODI' || formatType == 'TEST') ? 11 : 6;
-    final players = (data['playersPerTeam'] as num?)?.toInt() ??
+    final players = config?.matchRules.playersPerTeam ??
+        (data['playersPerTeam'] as num?)?.toInt() ??
         (data['players_per_team'] as num?)?.toInt() ??
         (data['players'] as num?)?.toInt() ??
         (data['teamSize'] as num?)?.toInt() ??
@@ -140,20 +173,23 @@ class TournamentModel {
         (data['totalPlayers'] as num?)?.toInt() ??
         defaultPlayers;
 
-    final lms = data['allowLastManStanding'] as bool? ??
+    final lms = config?.matchRules.allowLastManStanding ??
+        data['allowLastManStanding'] as bool? ??
         (data['allow_last_man_standing'] as bool?) ??
         (formatType == 'T20' || formatType == 'ODI' || formatType == 'TEST' || players > 8
             ? false
             : (players <= 8));
 
-    final explicitMaxWickets = (data['maxWickets'] as num?)?.toInt() ??
+    final explicitMaxWickets = config?.matchRules.maxDismissals ??
+        (data['maxWickets'] as num?)?.toInt() ??
         (data['max_wickets'] as num?)?.toInt();
     final defaultMaxWickets = lms ? players : (players > 1 ? players - 1 : 1);
     final effectiveMaxWickets = (explicitMaxWickets != null && explicitMaxWickets > 0 && !(players >= 10 && explicitMaxWickets <= 6))
         ? explicitMaxWickets
         : defaultMaxWickets;
 
-    final explicitMaxBowler = (data['maxOverPerBowler'] as num?)?.toInt() ??
+    final explicitMaxBowler = config?.matchRules.maxOversPerBowler ??
+        (data['maxOverPerBowler'] as num?)?.toInt() ??
         (data['max_over_per_bowler'] as num?)?.toInt() ??
         (data['max_overs_per_bowler'] as num?)?.toInt() ??
         (data['maxOversPerBowler'] as num?)?.toInt();
@@ -162,7 +198,30 @@ class TournamentModel {
         : AppConstants.getMaxOverPerBowler(oversPerSide: overs);
 
     final rawGroups = data['groups'] as List<dynamic>?;
-    final List<String>? groupsList = rawGroups?.map((e) => e.toString()).toList();
+    final List<String>? configGroups = config?.groupsStage?.groups.map((g) => g.id).toList();
+    final List<String>? groupsList = configGroups ?? rawGroups?.map((e) => e.toString()).toList();
+
+    final configAdvance = config?.groupsStage?.groups.isNotEmpty == true
+        ? config!.groupsStage!.groups.first.qualifyingSlots
+        : null;
+    final advanceCount = configAdvance ??
+        (data['teamsPerGroupAdvance'] as num?)?.toInt() ??
+        (data['teams_per_group_advance'] as num?)?.toInt() ??
+        2;
+
+    final derivedStageFormat = (config?.groupsStage != null)
+        ? 'GROUPS_AND_KNOCKOUT'
+        : (uiPresentation?.isGroupedTabs == true
+            ? 'GROUPS_AND_KNOCKOUT'
+            : (data['stageFormat'] as String? ?? data['stage_format'] as String? ?? 'ROUND_ROBIN'));
+
+    final pointsConfig = config?.pointsConfig;
+    final winPts = pointsConfig?.win ?? (data['winPoints'] as num?)?.toInt() ?? 2;
+    final tiePts = pointsConfig?.tie ?? (data['tiePoints'] as num?)?.toInt() ?? 1;
+    final noResultPts = pointsConfig?.noResult ??
+        (data['noResultPoints'] as num?)?.toInt() ??
+        1;
+    final lossPts = pointsConfig?.loss ?? (data['lossPoints'] as num?)?.toInt() ?? 0;
 
     return TournamentModel(
       id: id,
@@ -183,16 +242,18 @@ class TournamentModel {
       venueMapsUrl: data['venueMapsUrl'] as String? ?? data['venue_maps_url'] as String?,
       status: data['status'] as String? ?? 'LIVE',
       playoffFormat: data['playoffFormat'] as String? ?? data['playoff_format'] as String? ?? 'PAGE_PLAYOFF_TOP3',
-      stageFormat: data['stageFormat'] as String? ?? data['stage_format'] as String? ?? 'ROUND_ROBIN',
+      stageFormat: derivedStageFormat,
       groupPlayoffFormat: data['groupPlayoffFormat'] as String? ?? data['group_playoff_format'] as String?,
       groups: groupsList,
       groupCount: (data['groupCount'] as num?)?.toInt() ?? (data['group_count'] as num?)?.toInt() ?? groupsList?.length,
-      teamsPerGroupAdvance: (data['teamsPerGroupAdvance'] as num?)?.toInt() ?? (data['teams_per_group_advance'] as num?)?.toInt() ?? 2,
-      winPoints: (data['winPoints'] as num?)?.toInt() ?? 2,
-      tiePoints: (data['tiePoints'] as num?)?.toInt() ?? 1,
-      noResultPoints: (data['noResultPoints'] as num?)?.toInt() ?? 1,
-      lossPoints: (data['lossPoints'] as num?)?.toInt() ?? 0,
+      teamsPerGroupAdvance: advanceCount,
+      winPoints: winPts,
+      tiePoints: tiePts,
+      noResultPoints: noResultPts,
+      lossPoints: lossPts,
       championTeamId: data['championTeamId'] as String?,
+      config: config,
+      uiPresentation: uiPresentation,
       createdAt: parseFirestoreDateTimeString(data['createdAt']),
       updatedAt: parseFirestoreDateTimeString(data['updatedAt']),
     );
@@ -230,6 +291,8 @@ class TournamentModel {
       'noResultPoints': noResultPoints,
       'lossPoints': lossPoints,
       if (championTeamId != null) 'championTeamId': championTeamId,
+      if (config != null) 'config': config!.toMap(),
+      if (uiPresentation != null) 'uiPresentation': uiPresentation!.toMap(),
       if (createdAt != null) 'createdAt': createdAt,
       'updatedAt': updatedAt ?? DateTime.now().toIso8601String(),
     };
@@ -266,6 +329,8 @@ class TournamentModel {
     int? noResultPoints,
     int? lossPoints,
     String? championTeamId,
+    TournamentConfig? config,
+    UiPresentationConfig? uiPresentation,
     String? createdAt,
     String? updatedAt,
   }) {
@@ -298,6 +363,8 @@ class TournamentModel {
       noResultPoints: noResultPoints ?? this.noResultPoints,
       lossPoints: lossPoints ?? this.lossPoints,
       championTeamId: championTeamId ?? this.championTeamId,
+      config: config ?? this.config,
+      uiPresentation: uiPresentation ?? this.uiPresentation,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

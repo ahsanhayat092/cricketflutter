@@ -295,7 +295,10 @@ class MatchModel {
         date: '',
       );
     }
-    final rawRules = data['rules'] as Map<String, dynamic>?;
+    final rawRules = (data['rules'] as Map<String, dynamic>?) ??
+        (data['config'] is Map<String, dynamic>
+            ? ((data['config'] as Map<String, dynamic>)['matchRules'] as Map<String, dynamic>?)
+            : null);
     final formatType = (data['formatType'] as String?) ??
         (data['format_type'] as String?) ??
         (rawRules != null ? (rawRules['formatType'] as String?) : null) ??

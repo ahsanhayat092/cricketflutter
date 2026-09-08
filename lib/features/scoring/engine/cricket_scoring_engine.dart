@@ -49,8 +49,9 @@ class CricketScoringEngine {
     required List<BowlingScore> bowlingScores,
     int? maxOverPerBowler,
     int? matchOvers,
+    int ballsPerOver = 6,
   }) {
-    // If match is > 5 overs (e.g. 10 overs, 20 overs), calculate dynamic quota
+    final bpo = ballsPerOver > 0 ? ballsPerOver : 6;
     final totalOvers = matchOvers ?? 0;
     final minQuotaForOvers = totalOvers > 5 ? (totalOvers / 5).ceil() : 1;
     final configuredMaxOvers = (maxOverPerBowler != null && maxOverPerBowler > 1)
@@ -59,38 +60,38 @@ class CricketScoringEngine {
 
     // If rules allow > 1 over per bowler (e.g., 2, 4, etc.)
     if (configuredMaxOvers > 1) {
-      return configuredMaxOvers * 6;
+      return configuredMaxOvers * bpo;
     }
 
     final isFinal = isFinalMatch(stage);
-    if (!isFinal) return 6; // Default League: strictly 6 legal balls (1 over)
+    if (!isFinal) return bpo; // Default League: strictly bpo legal balls (1 over)
 
     // Special 5-over final quota rule (ONLY applies to short <= 5 overs matches):
     if (totalOvers > 5) {
-      return minQuotaForOvers * 6;
+      return minQuotaForOvers * bpo;
     }
 
-    final bowlersWith2Overs = bowlingScores.where((b) => b.balls >= 12).toList();
+    final bowlersWith2Overs = bowlingScores.where((b) => b.balls >= (2 * bpo)).toList();
     final alreadyHas2OverBowler = bowlersWith2Overs.isNotEmpty;
     final thisBowler = bowlingScores.firstWhere(
       (b) => b.playerId == bowlerId,
       orElse: () => BowlingScore.empty(bowlerId),
     );
 
-    // If this bowler already bowled 6 balls and no other bowler has taken the 2-over quota
-    if (thisBowler.balls >= 6) {
+    // If this bowler already bowled bpo balls and no other bowler has taken the 2-over quota
+    if (thisBowler.balls >= bpo) {
       if (!alreadyHas2OverBowler || bowlersWith2Overs.any((b) => b.playerId == bowlerId)) {
-        return 12; // Allowed 2nd over
+        return 2 * bpo; // Allowed 2nd over
       }
-      return 6; // Another bowler already bowled 2 overs
+      return bpo; // Another bowler already bowled 2 overs
     }
 
-    // Bowler has bowled < 6 balls
+    // Bowler has bowled < bpo balls
     if (alreadyHas2OverBowler && !bowlersWith2Overs.any((b) => b.playerId == bowlerId)) {
-      return 6; // Someone else already has the 2-over slot
+      return bpo; // Someone else already has the 2-over slot
     }
 
-    return 12; // Potentially eligible for 2 overs in Final
+    return 2 * bpo; // Potentially eligible for 2 overs in Final
   }
 
   /// Checks if a bowler has completed their maximum allowed balls
@@ -100,18 +101,21 @@ class CricketScoringEngine {
     required List<BowlingScore> bowlingScores,
     int? maxOverPerBowler,
     int? matchOvers,
+    int ballsPerOver = 6,
   }) {
-    final current = bowlingScores.firstWhere(
-      (b) => b.playerId == bowlerId,
-      orElse: () => BowlingScore.empty(bowlerId),
-    );
-    return current.balls >= getBowlerMaxBalls(
+    final maxBalls = getBowlerMaxBalls(
       bowlerId: bowlerId,
       stage: stage,
       bowlingScores: bowlingScores,
       maxOverPerBowler: maxOverPerBowler,
       matchOvers: matchOvers,
+      ballsPerOver: ballsPerOver,
     );
+    final currentBalls = bowlingScores.firstWhere(
+      (b) => b.playerId == bowlerId,
+      orElse: () => BowlingScore.empty(bowlerId),
+    ).balls;
+    return currentBalls >= maxBalls;
   }
 
   /// Checks if a bowler is eligible to bowl the next over
@@ -249,6 +253,7 @@ class CricketScoringEngine {
     String? celebrationText;
 
     final rules = match.rules;
+    final ballsPerOver = rules.ballsPerOver > 0 ? rules.ballsPerOver : AppConstants.ballsPerOver;
     final bowlerBallsSoFar = bowlingScores[bowlerId]?.balls ?? 0;
     final stageEnum = match.isFinal ? MatchStage.finalMatch : MatchStage.league;
     final maxBallsAllowed = getBowlerMaxBalls(
@@ -257,8 +262,9 @@ class CricketScoringEngine {
       bowlingScores: bowlingScores.values.toList(),
       maxOverPerBowler: rules.maxOverPerBowler,
       matchOvers: match.maxOvers,
+      ballsPerOver: ballsPerOver,
     );
-    final isNewOverStart = innings.balls > 0 && (innings.balls % AppConstants.ballsPerOver == 0);
+    final isNewOverStart = innings.balls > 0 && (innings.balls % ballsPerOver == 0);
     final isConsecutiveViolation = isNewOverStart && previousBowlerId != null && bowlerId == previousBowlerId;
 
     if (bowlerBallsSoFar >= maxBallsAllowed || isConsecutiveViolation) {
@@ -293,6 +299,9 @@ class CricketScoringEngine {
       final extraRuns = input.extraRuns > 0 ? input.extraRuns : wideDefault;
       deliveryTotalRuns += extraRuns;
       runsChargedToBowler += extraRuns;
+      if (!rules.wideReball) {
+        isLegal = true; // No re-bowl required: counts as legal delivery
+      }
     } else if (input.isNoBall) {
       currentNoBalls += 1;
       final nbDefault = rules.noBallRuns > 0 ? rules.noBallRuns : 1;
@@ -303,6 +312,9 @@ class CricketScoringEngine {
         deliveryTotalRuns += input.runsOffBat;
         runsChargedToBowler += input.runsOffBat;
         runsAddedToBatsman += input.runsOffBat;
+      }
+      if (!rules.noBallReball) {
+        isLegal = true; // No re-bowl required: counts as legal delivery
       }
     } else if (input.isBye) {
       currentByes += input.extraRuns;
@@ -458,13 +470,13 @@ class CricketScoringEngine {
     }
 
     bool isOverCompleted = false;
-    if (isLegal && currentBalls % AppConstants.ballsPerOver == 0) {
+    if (isLegal && currentBalls % ballsPerOver == 0) {
       isOverCompleted = true;
       nextPreviousBowlerId = bowlerId;
 
       final overSymbols = [...innings.recentBalls, input.displaySymbol];
-      final currentOverDeliveries = overSymbols.length >= 6
-          ? overSymbols.sublist(overSymbols.length - 6)
+      final currentOverDeliveries = overSymbols.length >= ballsPerOver
+          ? overSymbols.sublist(overSymbols.length - ballsPerOver)
           : overSymbols;
 
       final isMaiden = currentOverDeliveries.every((s) =>
@@ -533,15 +545,19 @@ class CricketScoringEngine {
     }
 
     // Calculate Free Hit state for next delivery:
-    // - No-Ball: triggers a Free Hit on the next ball
+    // - No-Ball: triggers a Free Hit on the next ball ONLY IF rules.freeHitEnabled is true
     // - Wide: preserves active Free Hit (illegal ball does not consume Free Hit)
     // - Legal delivery: consumes Free Hit
     bool nextFreeHit = false;
     if (input.isNoBall) {
-      nextFreeHit = true;
-      if (celebrationType == null) {
-        celebrationType = 'FREE_HIT';
-        celebrationText = 'NO BALL! 🎯 FREE HIT NEXT!';
+      if (rules.freeHitEnabled) {
+        nextFreeHit = true;
+        if (celebrationType == null) {
+          celebrationType = 'FREE_HIT';
+          celebrationText = 'NO BALL! 🎯 FREE HIT NEXT!';
+        }
+      } else {
+        nextFreeHit = false;
       }
     } else if (input.isWide) {
       nextFreeHit = innings.isFreeHit;

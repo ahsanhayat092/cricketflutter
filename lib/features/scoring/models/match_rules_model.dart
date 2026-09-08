@@ -1,4 +1,5 @@
 import '../../../core/constants/app_constants.dart';
+import '../../../core/models/tournament_config.dart';
 
 // -------------------------------------------------------------
 // Tournament / Match Rules Model for PitchPe Mobile App
@@ -6,24 +7,30 @@ import '../../../core/constants/app_constants.dart';
 class MatchRulesModel {
   final String formatType;
   final int oversPerSide;
+  final int ballsPerOver;
   final int maxOverPerBowler;
   final int _explicitPlayersPerTeam;
   final int _explicitMaxWickets;
   final bool allowLastManStanding;
   final bool freeHitEnabled;
   final int noBallRuns;
+  final bool noBallReball;
   final int wideRuns;
+  final bool wideReball;
 
   const MatchRulesModel({
     this.formatType = 'TAPE_BALL_INDOOR',
     this.oversPerSide = 4,
+    this.ballsPerOver = 6,
     this.maxOverPerBowler = 1,
     int playersPerTeam = 0,
     int maxWickets = 0,
     this.allowLastManStanding = true,
     this.freeHitEnabled = true,
     this.noBallRuns = 1,
+    this.noBallReball = true,
     this.wideRuns = 1,
+    this.wideReball = true,
   })  : _explicitPlayersPerTeam = playersPerTeam,
         _explicitMaxWickets = maxWickets;
 
@@ -46,8 +53,32 @@ class MatchRulesModel {
         : (playersPerTeam > 1 ? playersPerTeam - 1 : 1);
   }
 
+  factory MatchRulesModel.fromConfig(MatchRulesConfig config, {String formatType = 'CUSTOM'}) {
+    return MatchRulesModel(
+      formatType: formatType,
+      oversPerSide: config.oversPerSide,
+      ballsPerOver: config.ballsPerOver,
+      maxOverPerBowler: config.maxOversPerBowler,
+      playersPerTeam: config.playersPerTeam,
+      maxWickets: config.maxDismissals,
+      allowLastManStanding: config.allowLastManStanding,
+      freeHitEnabled: config.noBallRule.freeHit,
+      noBallRuns: config.noBallRule.runs,
+      noBallReball: config.noBallRule.reball,
+      wideRuns: config.wideRule.runs,
+      wideReball: config.wideRule.reball,
+    );
+  }
+
   factory MatchRulesModel.fromMap(Map<String, dynamic>? data) {
     if (data == null) return const MatchRulesModel();
+
+    // Check if configuration object is present
+    if (data.containsKey('matchRules') && data['matchRules'] is Map<String, dynamic>) {
+      final cfg = MatchRulesConfig.fromMap(data['matchRules'] as Map<String, dynamic>);
+      return MatchRulesModel.fromConfig(cfg, formatType: data['formatType'] as String? ?? 'CUSTOM');
+    }
+
     final formatType = data['formatType'] as String? ?? 'TAPE_BALL_INDOOR';
     final overs = (data['oversPerSide'] as num?)?.toInt() ??
         (data['overs_per_side'] as num?)?.toInt() ??
@@ -92,13 +123,16 @@ class MatchRulesModel {
     return MatchRulesModel(
       formatType: formatType,
       oversPerSide: overs,
+      ballsPerOver: (data['ballsPerOver'] as num?)?.toInt() ?? (data['balls_per_over'] as num?)?.toInt() ?? 6,
       maxOverPerBowler: calculatedMaxBowler,
       playersPerTeam: explicitPlayers,
       maxWickets: explicitMaxWickets,
       allowLastManStanding: lms,
       freeHitEnabled: data['freeHitEnabled'] as bool? ?? data['free_hit_enabled'] as bool? ?? true,
       noBallRuns: (data['noBallRuns'] as num?)?.toInt() ?? (data['no_ball_runs'] as num?)?.toInt() ?? 1,
+      noBallReball: data['noBallReball'] as bool? ?? data['no_ball_reball'] as bool? ?? true,
       wideRuns: (data['wideRuns'] as num?)?.toInt() ?? (data['wide_runs'] as num?)?.toInt() ?? 1,
+      wideReball: data['wideReball'] as bool? ?? data['wide_reball'] as bool? ?? true,
     );
   }
 
@@ -106,37 +140,47 @@ class MatchRulesModel {
     return {
       'formatType': formatType,
       'oversPerSide': oversPerSide,
+      'ballsPerOver': ballsPerOver,
       'maxOverPerBowler': maxOverPerBowler,
       'playersPerTeam': playersPerTeam,
       'maxWickets': maxWickets,
       'allowLastManStanding': allowLastManStanding,
       'freeHitEnabled': freeHitEnabled,
       'noBallRuns': noBallRuns,
+      'noBallReball': noBallReball,
       'wideRuns': wideRuns,
+      'wideReball': wideReball,
     };
   }
 
   MatchRulesModel copyWith({
     String? formatType,
     int? oversPerSide,
+    int? ballsPerOver,
     int? maxOverPerBowler,
     int? playersPerTeam,
     int? maxWickets,
     bool? allowLastManStanding,
     bool? freeHitEnabled,
     int? noBallRuns,
+    bool? noBallReball,
     int? wideRuns,
+    bool? wideReball,
   }) {
     return MatchRulesModel(
       formatType: formatType ?? this.formatType,
       oversPerSide: oversPerSide ?? this.oversPerSide,
+      ballsPerOver: ballsPerOver ?? this.ballsPerOver,
       maxOverPerBowler: maxOverPerBowler ?? this.maxOverPerBowler,
-      playersPerTeam: playersPerTeam ?? this._explicitPlayersPerTeam,
-      maxWickets: maxWickets ?? this._explicitMaxWickets,
+      playersPerTeam: playersPerTeam ?? _explicitPlayersPerTeam,
+      maxWickets: maxWickets ?? _explicitMaxWickets,
       allowLastManStanding: allowLastManStanding ?? this.allowLastManStanding,
       freeHitEnabled: freeHitEnabled ?? this.freeHitEnabled,
       noBallRuns: noBallRuns ?? this.noBallRuns,
+      noBallReball: noBallReball ?? this.noBallReball,
       wideRuns: wideRuns ?? this.wideRuns,
+      wideReball: wideReball ?? this.wideReball,
     );
   }
 }
+

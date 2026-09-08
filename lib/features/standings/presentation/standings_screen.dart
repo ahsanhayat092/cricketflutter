@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/models/tournament_config.dart';
 import '../../live_viewer/presentation/live_match_screen.dart';
 import '../../live_viewer/presentation/match_scorecard_screen.dart';
 import '../../match_management/presentation/match_lineup_screen.dart';
@@ -118,20 +119,29 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
     List<MatchModel> allMatches,
     List<TeamModel> allTeams,
   ) {
+    final uiPres = tournament?.uiPresentation;
+    final groupsStage = tournament?.config?.groupsStage;
     final hasGroupedTeams = list.any((item) =>
         (item.standing.groupName ?? item.team?.groupName)?.trim().isNotEmpty == true);
-    final isGroupFormat = (tournament?.isGroupsAndKnockout == true) ||
-        (tournament?.groups != null && tournament!.groups!.isNotEmpty) ||
-        (tournament?.groupCount != null && tournament!.groupCount! > 1) ||
-        hasGroupedTeams;
-    final advanceCount = tournament?.teamsPerGroupAdvance ?? 2;
+    final isGroupFormat = (uiPres != null)
+        ? (uiPres.isGroupedTabs || (groupsStage != null && groupsStage.groups.isNotEmpty))
+        : ((tournament?.isGroupsAndKnockout == true) ||
+            (tournament?.groups != null && tournament!.groups!.isNotEmpty) ||
+            (tournament?.groupCount != null && tournament!.groupCount! > 1) ||
+            hasGroupedTeams);
+    final advanceCount = groupsStage?.groups.isNotEmpty == true
+        ? groupsStage!.groups.first.qualifyingSlots
+        : tournament?.effectiveTeamsPerGroupAdvance ?? 2;
 
     String subtitle;
-    if (isGroupFormat) {
+    final advancementDesc = groupsStage?.advancementRule?.description.trim();
+    if (advancementDesc != null && advancementDesc.isNotEmpty) {
+      subtitle = advancementDesc;
+    } else if (isGroupFormat) {
       if (tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL') {
         subtitle = 'Top 1 from each group qualifies directly for the Grand Final';
       } else {
-        subtitle = 'Top $advanceCount from Group A & Group B qualify for Semi-Finals';
+        subtitle = 'Top $advanceCount from each group qualify for Playoff Knockouts';
       }
     } else {
       subtitle = 'Top 2 teams qualify directly for the Grand Final';
@@ -141,6 +151,9 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
       final g = item.standing.groupName ?? item.team?.groupName;
       if (g != null && g.trim().isNotEmpty) {
         return g.trim().toUpperCase();
+      }
+      if (groupsStage != null && groupsStage.groups.isNotEmpty) {
+        return groupsStage.groups[index % groupsStage.groups.length].id.toUpperCase();
       }
       return index % 2 == 0 ? 'A' : 'B';
     }
@@ -168,7 +181,21 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
       });
     }
 
-    final sortedGroupKeys = groupedStandings.keys.toList()..sort();
+    final List<String> sortedGroupKeys;
+    if (groupsStage != null && groupsStage.groups.isNotEmpty) {
+      final configuredKeys = groupsStage.groups.map((g) => g.id.toUpperCase()).toList();
+      sortedGroupKeys = groupedStandings.keys.toList()
+        ..sort((a, b) {
+          final idxA = configuredKeys.indexOf(a);
+          final idxB = configuredKeys.indexOf(b);
+          if (idxA != -1 && idxB != -1) return idxA.compareTo(idxB);
+          if (idxA != -1) return -1;
+          if (idxB != -1) return 1;
+          return a.compareTo(b);
+        });
+    } else {
+      sortedGroupKeys = groupedStandings.keys.toList()..sort();
+    }
 
     // 1. Identify Grand Final Match & Crowned Champion
     MatchModel? grandFinalMatch;
@@ -266,7 +293,14 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
                   _buildGroupFilterPill('ALL', 'All Groups (${list.length})'),
                   for (final g in sortedGroupKeys) ...[
                     const SizedBox(width: 8),
-                    _buildGroupFilterPill(g, 'Group $g (${groupedStandings[g]?.length ?? 0})'),
+                    () {
+                      final themeName = uiPres?.getGroupTheme(g).name;
+                      final groupName = themeName ?? groupsStage?.findGroup(g)?.name ?? 'Group $g';
+                      return _buildGroupFilterPill(
+                        g,
+                        '$groupName (${groupedStandings[g]?.length ?? 0})',
+                      );
+                    }(),
                   ],
                 ],
               ),
@@ -275,17 +309,26 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
 
             for (final g in sortedGroupKeys)
               if (_selectedGroupTab == 'ALL' || _selectedGroupTab == g) ...[
-                _buildGroupSection(
-                  groupKey: g,
-                  items: groupedStandings[g] ?? [],
-                  advanceCount: advanceCount,
-                  qualificationLabel: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL'
-                      ? 'Final (Q)'
-                      : 'Semi-Final (Q)',
-                  subheaderTag: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL'
+                () {
+                  final stageGroup = groupsStage?.findGroup(g);
+                  final gAdvance = stageGroup?.qualifyingSlots ?? advanceCount;
+                  final defaultSubheader = tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL'
                       ? 'Top 1 Advances to Grand Final'
-                      : 'Top $advanceCount Advance to Semi-Finals',
-                ),
+                      : 'Top $gAdvance Advance to Playoff Knockouts';
+                  return _buildGroupSection(
+                    groupKey: g,
+                    items: groupedStandings[g] ?? [],
+                    advanceCount: gAdvance,
+                    qualificationLabel: tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL'
+                        ? 'Final (Q)'
+                        : 'Playoff (Q)',
+                    subheaderTag: stageGroup != null
+                        ? 'Top ${stageGroup.qualifyingSlots} Advance'
+                        : defaultSubheader,
+                    tournament: tournament,
+                    stageGroup: stageGroup,
+                  );
+                }(),
                 const SizedBox(height: 20),
               ],
           ] else ...[
@@ -310,11 +353,18 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
                   ...list.asMap().entries.map((entry) {
                     final index = entry.key;
                     final item = entry.value;
+                    final pos = index + 1;
+                    final badgeConfig = uiPres?.getBadgeForPosition(pos);
+                    final isQualZone = badgeConfig != null || pos <= 2;
+                    final rowQualLabel = badgeConfig?.label ?? 'Final (Q)';
+                    final rowQualColor = badgeConfig?.badgeColor ?? AppColors.completedGreen;
                     return _buildTableRow(
-                      index + 1,
+                      pos,
                       item,
                       isLast: index == list.length - 1,
-                      isQualifiedZone: index < 2,
+                      isQualifiedZone: isQualZone,
+                      qualificationLabel: rowQualLabel,
+                      qualificationColor: rowQualColor,
                     );
                   }),
                 ],
@@ -382,7 +432,9 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
                   '(Total Runs Scored / Overs Faced) - (Total Runs Conceded / Overs Bowled)',
                 ),
                 _buildLegendItem('Tiebreaker', 'Points > Higher NRR > Head to Head'),
-                if (isGroupFormat)
+                if (advancementDesc != null && advancementDesc.isNotEmpty)
+                  _buildLegendItem('Advancement Rule', advancementDesc)
+                else if (isGroupFormat)
                   _buildLegendItem(
                     'Knockout Bracket',
                     tournament?.groupPlayoffFormat == 'GROUP_DIRECT_FINAL'
@@ -416,8 +468,11 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
       ..sort((a, b) => a.matchNumber.compareTo(b.matchNumber));
 
     // Resolve leaders for projected cards if no match documents exist yet
-    final sortedGroupA = groupedStandings['A'] ?? [];
-    final sortedGroupB = groupedStandings['B'] ?? [];
+    final groupKeys = groupedStandings.keys.toList()..sort();
+    final firstKey = groupKeys.isNotEmpty ? groupKeys[0] : 'A';
+    final secondKey = groupKeys.length > 1 ? groupKeys[1] : 'B';
+    final sortedGroupA = groupedStandings['A'] ?? groupedStandings[firstKey] ?? [];
+    final sortedGroupB = groupedStandings['B'] ?? groupedStandings[secondKey] ?? [];
 
     final topA1 = sortedGroupA.isNotEmpty ? sortedGroupA[0] : null;
     final topA2 = sortedGroupA.length > 1 ? sortedGroupA[1] : null;
@@ -1186,31 +1241,29 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
     required int advanceCount,
     required String qualificationLabel,
     required String subheaderTag,
+    TournamentModel? tournament,
+    StageGroupConfig? stageGroup,
   }) {
-    final isGroupA = groupKey.toUpperCase() == 'A';
-    final isGroupB = groupKey.toUpperCase() == 'B';
-
-    final gradientColors = isGroupA
-        ? const [Color(0xFF00E5FF), Color(0xFF3B82F6)]
-        : isGroupB
-            ? const [Color(0xFFA855F7), Color(0xFF6366F1)]
-            : const [Color(0xFFF59E0B), Color(0xFFEF4444)];
-
-    final badgeShadowColor = (isGroupA
+    final uiPres = tournament?.uiPresentation;
+    final groupTheme = uiPres?.getGroupTheme(groupKey);
+    final groupName = groupTheme?.name ?? stageGroup?.name ?? 'GROUP $groupKey';
+    final primaryColor = groupTheme?.primaryColor ??
+        stageGroup?.color ??
+        (groupKey.toUpperCase() == 'A'
             ? const Color(0xFF00E5FF)
-            : (isGroupB ? const Color(0xFFA855F7) : const Color(0xFFF59E0B)))
-        .withValues(alpha: 0.35);
+            : (groupKey.toUpperCase() == 'B'
+                ? const Color(0xFFA855F7)
+                : const Color(0xFFF59E0B)));
+
+    final gradientColors = [primaryColor, primaryColor.withValues(alpha: 0.7)];
+    final badgeShadowColor = primaryColor.withValues(alpha: 0.35);
 
     return Container(
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isGroupA
-              ? const Color(0xFF00E5FF).withValues(alpha: 0.25)
-              : isGroupB
-                  ? const Color(0xFFA855F7).withValues(alpha: 0.25)
-                  : Colors.white.withValues(alpha: 0.08),
+          color: primaryColor.withValues(alpha: 0.25),
         ),
         boxShadow: [
           BoxShadow(
@@ -1251,7 +1304,7 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
                       const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 14),
                       const SizedBox(width: 6),
                       Text(
-                        'GROUP $groupKey STANDINGS',
+                        '$groupName STANDINGS'.toUpperCase(),
                         style: GoogleFonts.outfit(
                           fontSize: 12,
                           fontWeight: FontWeight.w900,
@@ -1288,20 +1341,25 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
             Padding(
               padding: const EdgeInsets.all(20),
               child: Center(
-                child: Text('No teams in Group $groupKey', style: GoogleFonts.outfit(color: AppColors.textMuted)),
+                child: Text('No teams in $groupName', style: GoogleFonts.outfit(color: AppColors.textMuted)),
               ),
             )
           else
             ...items.asMap().entries.map((entry) {
               final index = entry.key;
               final item = entry.value;
-              final isQualZone = index < advanceCount;
+              final pos = index + 1;
+              final badgeConfig = uiPres?.getBadgeForPosition(pos);
+              final isQualZone = badgeConfig != null || pos <= advanceCount;
+              final rowQualLabel = badgeConfig?.label ?? qualificationLabel;
+              final rowQualColor = badgeConfig?.badgeColor ?? AppColors.completedGreen;
               return _buildTableRow(
-                index + 1,
+                pos,
                 item,
                 isLast: index == items.length - 1,
                 isQualifiedZone: isQualZone,
-                qualificationLabel: qualificationLabel,
+                qualificationLabel: rowQualLabel,
+                qualificationColor: rowQualColor,
               );
             }),
         ],
@@ -1337,18 +1395,20 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
     required bool isLast,
     bool isQualifiedZone = false,
     String? qualificationLabel,
+    Color? qualificationColor,
   }) {
     final s = item.standing;
     final isQualified = s.status == 'QUALIFIED_PLAYOFF' || isQualifiedZone;
     final isEliminated = s.status == 'ELIMINATED';
+    final effectiveQualColor = qualificationColor ?? AppColors.completedGreen;
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: isQualified ? AppColors.accent.withValues(alpha: 0.04) : Colors.transparent,
+        color: isQualified ? effectiveQualColor.withValues(alpha: 0.04) : Colors.transparent,
         border: Border(
           left: BorderSide(
-            color: isQualified ? AppColors.completedGreen : Colors.transparent,
+            color: isQualified ? effectiveQualColor : Colors.transparent,
             width: 3.5,
           ),
           bottom: isLast ? BorderSide.none : BorderSide(color: Colors.white.withValues(alpha: 0.05)),
@@ -1370,7 +1430,7 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
                     style: GoogleFonts.outfit(
                       fontSize: 13,
                       fontWeight: FontWeight.w900,
-                      color: isQualified ? AppColors.accent : AppColors.textMuted,
+                      color: isQualified ? (qualificationColor ?? AppColors.accent) : AppColors.textMuted,
                     ),
                   ),
                 ),
@@ -1416,13 +1476,13 @@ class _StandingsScreenState extends ConsumerState<StandingsScreen> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                               decoration: BoxDecoration(
-                                color: AppColors.completedGreen.withValues(alpha: 0.15),
+                                color: effectiveQualColor.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: AppColors.completedGreen.withValues(alpha: 0.4), width: 0.8),
+                                border: Border.all(color: effectiveQualColor.withValues(alpha: 0.4), width: 0.8),
                               ),
                               child: Text(
                                 qualificationLabel ?? 'Q',
-                                style: GoogleFonts.outfit(fontSize: 8, fontWeight: FontWeight.w900, color: AppColors.completedGreen),
+                                style: GoogleFonts.outfit(fontSize: 8, fontWeight: FontWeight.w900, color: effectiveQualColor),
                               ),
                             ),
                           ] else if (isEliminated) ...[

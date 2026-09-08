@@ -250,13 +250,37 @@ class _FixturesScreenState extends ConsumerState<FixturesScreen>
       );
     }
 
+    final tournament = ref.watch(activeTournamentProvider).value;
+    final stages = tournament?.config?.stages;
+    final sortedMatches = List<MatchModel>.from(matches);
+    if (stages != null && stages.isNotEmpty) {
+      int getStageOrder(String stage) {
+        final upper = stage.toUpperCase();
+        for (final s in stages) {
+          if (s.name.toUpperCase() == upper || s.type.toUpperCase() == upper || s.id.toUpperCase() == upper) {
+            return s.sequenceOrder;
+          }
+        }
+        if (upper.contains('LEAGUE') || upper.contains('GROUP')) return 1;
+        if (upper.contains('SEMI') || upper.contains('PLAYOFF')) return 2;
+        if (upper.contains('FINAL')) return 3;
+        return 99;
+      }
+
+      sortedMatches.sort((a, b) {
+        final orderA = getStageOrder(a.stage);
+        final orderB = getStageOrder(b.stage);
+        if (orderA != orderB) return orderA.compareTo(orderB);
+        return a.matchNumber.compareTo(b.matchNumber);
+      });
+    }
+
     return ListView.separated(
       padding: const EdgeInsets.all(16),
-      itemCount: matches.length,
+      itemCount: sortedMatches.length,
       separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
-        final match = matches[index];
-        final tournament = ref.watch(activeTournamentProvider).value;
+        final match = sortedMatches[index];
 
         final nameA = (match.teamAId != null && match.teamAId!.isNotEmpty)
             ? (teamMap[match.teamAId]?.name ?? 'Team A')
