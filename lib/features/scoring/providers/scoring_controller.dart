@@ -6,6 +6,7 @@ import '../models/innings_model.dart';
 import '../models/batting_score.dart';
 import '../models/bowling_score.dart';
 import '../models/ball_event.dart';
+import '../models/tournament_model.dart';
 import '../engine/scoring_snapshot.dart';
 import '../engine/cricket_scoring_engine.dart';
 import '../data/firebase_scoring_service.dart';
@@ -37,6 +38,8 @@ class ScoringState {
   final Map<String, String> teamNames;
   final Map<String, String> playerNames;
   final bool isLoading;
+  final TournamentModel? tournament;
+  final int? customMaxOverPerBowler;
 
   const ScoringState({
     required this.match,
@@ -58,10 +61,18 @@ class ScoringState {
     this.teamNames = const {},
     this.playerNames = const {},
     this.isLoading = true,
+    this.tournament,
+    this.customMaxOverPerBowler,
   });
 
   bool get canUndo => undoStack.isNotEmpty;
   bool get isLocked => innings.completed || match.isCompleted;
+
+  int get effectiveMaxOverPerBowler => CricketScoringEngine.resolveMaxOversPerBowler(
+        match: match,
+        tournament: tournament,
+        customQuota: customMaxOverPerBowler,
+      );
 
   ScoringState copyWith({
     MatchModel? match,
@@ -84,6 +95,8 @@ class ScoringState {
     Map<String, String>? teamNames,
     Map<String, String>? playerNames,
     bool? isLoading,
+    TournamentModel? tournament,
+    int? customMaxOverPerBowler,
   }) {
     return ScoringState(
       match: match ?? this.match,
@@ -105,6 +118,8 @@ class ScoringState {
       teamNames: teamNames ?? this.teamNames,
       playerNames: playerNames ?? this.playerNames,
       isLoading: isLoading ?? this.isLoading,
+      tournament: tournament ?? this.tournament,
+      customMaxOverPerBowler: customMaxOverPerBowler ?? this.customMaxOverPerBowler,
     );
   }
 }
@@ -115,6 +130,7 @@ final liveScoringControllerProvider =
   final syncService = ref.read(scoringSyncServiceProvider);
   final storage = ref.read(offlineScoringStorageProvider);
   final syncManager = ref.read(offlineSyncManagerProvider);
+  final activeTourney = ref.watch(activeTournamentProvider).value;
 
   return ScoringController(
     service,
@@ -122,6 +138,7 @@ final liveScoringControllerProvider =
     matchId,
     storage: storage,
     syncManager: syncManager,
+    initialTournament: activeTourney,
   );
 });
 
@@ -138,6 +155,7 @@ class ScoringController extends StateNotifier<ScoringState> {
     this.matchId, {
     OfflineScoringStorage? storage,
     OfflineSyncManager? syncManager,
+    TournamentModel? initialTournament,
   })  : _storage = storage,
         _syncManager = syncManager,
         super(ScoringState(
@@ -164,6 +182,7 @@ class ScoringController extends StateNotifier<ScoringState> {
           currentBowlerId: null,
           previousBowlerId: null,
           isLoading: true,
+          tournament: initialTournament,
         )) {
     _loadInitialState();
   }
@@ -398,7 +417,7 @@ class ScoringController extends StateNotifier<ScoringState> {
           bowlerId: state.currentBowlerId!,
           stage: state.match.isFinal ? MatchStage.finalMatch : MatchStage.league,
           bowlingScores: state.bowlingScores.values.toList(),
-          maxOverPerBowler: state.match.rules.maxOverPerBowler,
+          maxOverPerBowler: state.effectiveMaxOverPerBowler,
         );
 
     if (isMidOver &&
@@ -560,6 +579,8 @@ class ScoringController extends StateNotifier<ScoringState> {
       bowlerId: currentBowlerId,
       previousBowlerId: state.previousBowlerId,
       input: input,
+      maxOverPerBowler: state.effectiveMaxOverPerBowler,
+      tournament: state.tournament,
       teamNames: state.teamNames,
       playerNames: state.playerNames,
     );
@@ -963,6 +984,33 @@ class ScoringController extends StateNotifier<ScoringState> {
         debugPrint('[ScoringController] Error updating lineup in Firestore: $e');
         state = state.copyWith(isSyncing: false, lastSyncError: e.toString());
       }
+    }
+  }
+
+  /// Update Bowler Quota dynamically from UI
+  Future<void> updateBowlerQuota(int newQuota) async {
+    if (newQuota <= 0) return;
+    final updatedRules = state.match.rules.copyWith(maxOverPerBowler: newQuota);
+    final updatedMatch = state.match.copyWith(rules: updatedRules);
+    state = state.copyWith(
+      customMaxOverPerBowler: newQuota,
+      match: updatedMatch,
+    );
+    await _saveCurrentSnapshotLocally();
+    try {
+      await _service.updateMatchBowlerQuota(
+        matchId: matchId,
+        maxOverPerBowler: newQuota,
+      );
+    } catch (e) {
+      debugPrint('[ScoringController] Error syncing bowler quota to Firestore: $e');
+    }
+  }
+
+  /// Ensure controller has live tournament context for dynamic quota resolution
+  void setTournament(TournamentModel? tournament) {
+    if (tournament != null && state.tournament?.id != tournament.id) {
+      state = state.copyWith(tournament: tournament);
     }
   }
 }

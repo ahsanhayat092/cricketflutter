@@ -7,7 +7,6 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/widgets/pitchpe_logo.dart';
-import '../../../core/constants/app_constants.dart';
 import '../../../core/utils/cricket_calculator.dart';
 import '../../../core/utils/image_url_helper.dart';
 import '../../../core/utils/dismissal_helper.dart';
@@ -262,7 +261,6 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
   ) async {
     final currentState = ref.read(liveScoringControllerProvider(widget.matchId));
     final isMidOver = currentState.innings.balls > 0 && (currentState.innings.balls % 6 != 0);
-    final currentBowlerScore = currentState.currentBowlerId != null ? currentState.bowlingScores[currentState.currentBowlerId!] : null;
     final matchDoc = ref.read(singleMatchProvider(widget.matchId)).value;
     final activeId = ref.read(activeTournamentIdProvider);
     final matchTourId = matchDoc?.tournamentId.isNotEmpty == true ? matchDoc!.tournamentId : activeId;
@@ -271,15 +269,13 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           orElse: () => ref.read(activeTournamentProvider).value,
         ) ?? ref.read(activeTournamentProvider).value;
 
+    if (tournament != null && currentState.tournament?.id != tournament.id) {
+      ref.read(liveScoringControllerProvider(widget.matchId).notifier).setTournament(tournament);
+    }
+
     final match = matchDoc ?? currentState.match;
     final totalMatchOvers = match.maxOvers;
-    final dynamicQuota = AppConstants.getMaxOverPerBowler(oversPerSide: totalMatchOvers);
-    final explicitQuota = match.rules.maxOverPerBowler > 0
-        ? match.rules.maxOverPerBowler
-        : (tournament?.maxOverPerBowler ?? 0);
-    final effectiveMaxOverPerBowler = (totalMatchOvers > 5 && explicitQuota <= 1)
-        ? dynamicQuota
-        : (explicitQuota > 0 ? explicitQuota : dynamicQuota);
+    final effectiveMaxOverPerBowler = currentState.effectiveMaxOverPerBowler;
 
     final isCurrentBowlerExhausted = currentState.currentBowlerId != null &&
         CricketScoringEngine.isBowlerQuotaExhausted(
@@ -320,6 +316,11 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           maxOverPerBowler: effectiveMaxOverPerBowler,
           matchOvers: totalMatchOvers,
           bowlingScores: state.bowlingScores,
+          onQuotaChanged: (newQuota) {
+            ref
+                .read(liveScoringControllerProvider(widget.matchId).notifier)
+                .updateBowlerQuota(newQuota);
+          },
         ),
       );
 
@@ -479,6 +480,18 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
           ),
         ),
       );
+    }
+
+    final allTournamentsAsync = ref.watch(allTournamentsProvider);
+    final tournament = allTournamentsAsync.value?.cast<TournamentModel?>().firstWhere(
+          (t) => t?.id == matchTourId,
+          orElse: () => ref.watch(activeTournamentProvider).value,
+        ) ?? ref.watch(activeTournamentProvider).value;
+
+    if (tournament != null && scoringState.tournament?.id != tournament.id) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ref.read(liveScoringControllerProvider(widget.matchId).notifier).setTournament(tournament);
+      });
     }
 
     final allPlayers = ref.watch(playersProvider).value ?? [];
@@ -707,6 +720,8 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                       isNoBowlerActive,
                       innings.balls,
                       isInningsFinished,
+                      scoringState.effectiveMaxOverPerBowler,
+                      match.maxOvers,
                     ),
                     if (isInningsFinished) ...[
                       const SizedBox(height: 16),
@@ -1257,6 +1272,8 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
     bool isNoBowlerActive,
     int currentBalls,
     bool isInningsFinished,
+    int effectiveMaxOverPerBowler,
+    int totalMatchOvers,
   ) {
     final runs = bowlerScore?.runs ?? 0;
     final overs = bowlerScore?.oversString ?? '0.0';
@@ -1352,6 +1369,135 @@ class _ScorerConsoleScreenState extends ConsumerState<ScorerConsoleScreen> {
                     ),
                   ),
             ],
+          ),
+          if (!isInningsFinished) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.surfaceLight,
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.tune_rounded, size: 11, color: AppColors.accent),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Quota: $effectiveMaxOverPerBowler ov/bowler',
+                        style: GoogleFonts.outfit(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 6),
+                GestureDetector(
+                  onTap: () => _showQuotaAdjustDialog(context, effectiveMaxOverPerBowler, totalMatchOvers),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: AppColors.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: AppColors.accent.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.edit_rounded, size: 10, color: AppColors.accent),
+                        const SizedBox(width: 3),
+                        Text(
+                          'Adjust',
+                          style: GoogleFonts.outfit(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.accent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _showQuotaAdjustDialog(BuildContext context, int currentQuota, int totalMatchOvers) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            const Icon(Icons.tune_rounded, color: AppColors.accent, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'ADJUST BOWLER QUOTA',
+              style: GoogleFonts.outfit(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Select maximum overs allowed per bowler for this match. This will immediately update bowler eligibility.',
+              style: GoogleFonts.outfit(fontSize: 12, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [1, 2, 3, 4, 5, 6].where((q) => q <= totalMatchOvers || q <= 3).map((quota) {
+                final isSelected = quota == currentQuota;
+                return ChoiceChip(
+                  label: Text('$quota Overs'),
+                  selected: isSelected,
+                  selectedColor: AppColors.accent,
+                  labelStyle: GoogleFonts.outfit(
+                    color: isSelected ? Colors.black : AppColors.textPrimary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  onSelected: (selected) {
+                    if (selected) {
+                      ref
+                          .read(liveScoringControllerProvider(widget.matchId).notifier)
+                          .updateBowlerQuota(quota);
+                      Navigator.pop(ctx);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text('Bowler quota updated to $quota overs per bowler'),
+                          backgroundColor: AppColors.primary,
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                );
+              }).toList(),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('CANCEL', style: GoogleFonts.outfit(color: AppColors.textMuted)),
           ),
         ],
       ),

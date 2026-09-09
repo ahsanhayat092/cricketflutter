@@ -4,6 +4,7 @@ import '../models/innings_model.dart';
 import '../models/batting_score.dart';
 import '../models/bowling_score.dart';
 import '../models/ball_event.dart';
+import '../models/tournament_model.dart';
 
 MatchStage matchStageFromString(String? stage) => MatchStageX.fromFirestoreString(stage);
 bool isFinalMatch(MatchStage stage) => stage == MatchStage.finalMatch;
@@ -42,6 +43,65 @@ class ScoringResult {
 }
 
 class CricketScoringEngine {
+  /// Multi-Tier Bowler Quota Fallback
+  /// Resolves the effective bowler quota by checking:
+  /// 1. Scorer custom quota override (if provided)
+  /// 2. If tournament explicitly defines a higher quota than match document (e.g. tournament = 3, match = 2 due to legacy formula)
+  /// 3. Match document's explicit quota
+  /// 4. Tournament Config (Brain) matchRules.maxOversPerBowler
+  /// 5. Tournament root maxOverPerBowler
+  /// 6. Default fallback based on match overs (<= 5 overs -> 1, 10-over matches -> 3)
+  static int resolveMaxOversPerBowler({
+    required MatchModel match,
+    TournamentModel? tournament,
+    int? customQuota,
+  }) {
+    if (customQuota != null && customQuota > 0) {
+      return customQuota;
+    }
+
+    final tourneyQuota = tournament?.config?.matchRules.maxOversPerBowler ??
+        (tournament?.maxOverPerBowler != null && tournament!.maxOverPerBowler > 0
+            ? tournament.maxOverPerBowler
+            : null);
+
+    // 1. If match document has a valid quota that matches tournament or was customized
+    final matchQuota = match.maxOverPerBowler;
+    if (matchQuota != null && matchQuota > 0) {
+      // If the tournament explicitly defines 3 overs, but match was saved with 2 due to legacy bug:
+      if (tourneyQuota != null && tourneyQuota > matchQuota) {
+        return tourneyQuota;
+      }
+      // If match quota was 2 on a 10-over match where tournament allows 3+:
+      final totalOvers = match.maxOvers;
+      if (matchQuota == 2 && totalOvers >= 10 && (tourneyQuota == null || tourneyQuota >= 3)) {
+        return 3;
+      }
+      return matchQuota;
+    }
+
+    // 2. Fall back to Tournament Config (Brain)
+    if (tournament?.config?.matchRules.maxOversPerBowler != null &&
+        tournament!.config!.matchRules.maxOversPerBowler > 0) {
+      return tournament.config!.matchRules.maxOversPerBowler;
+    }
+
+    // 3. Fall back to Tournament root field
+    if (tournament?.maxOverPerBowler != null && tournament!.maxOverPerBowler > 0) {
+      return tournament.maxOverPerBowler;
+    }
+
+    // 4. Fallback based on total overs
+    final totalOvers = match.rules.oversPerSide > 0
+        ? match.rules.oversPerSide
+        : (match.maxOvers > 0
+            ? match.maxOvers
+            : (tournament?.oversPerSide != null && tournament!.oversPerSide > 0
+                ? tournament.oversPerSide
+                : (match.oversPerSide > 0 ? match.oversPerSide : 10)));
+    return totalOvers <= 5 ? 1 : 3; // Default to 3 overs for 10-over matches
+  }
+
   /// Returns the maximum allowed legal balls for a specific bowler
   static int getBowlerMaxBalls({
     required String bowlerId,
@@ -53,12 +113,12 @@ class CricketScoringEngine {
   }) {
     final bpo = ballsPerOver > 0 ? ballsPerOver : 6;
     final totalOvers = matchOvers ?? 0;
-    final minQuotaForOvers = totalOvers > 5 ? (totalOvers / 5).ceil() : 1;
+    final minQuotaForOvers = totalOvers <= 5 ? 1 : (totalOvers <= 10 ? 3 : (totalOvers / 5).ceil());
     final configuredMaxOvers = (maxOverPerBowler != null && maxOverPerBowler > 1)
         ? maxOverPerBowler
         : (totalOvers > 5 ? minQuotaForOvers : (maxOverPerBowler ?? 1));
 
-    // If rules allow > 1 over per bowler (e.g., 2, 4, etc.)
+    // If rules allow > 1 over per bowler (e.g., 2, 3, 4, etc.)
     if (configuredMaxOvers > 1) {
       return configuredMaxOvers * bpo;
     }
@@ -229,6 +289,8 @@ class CricketScoringEngine {
     required String bowlerId,
     required String? previousBowlerId,
     required BallDeliveryInput input,
+    int? maxOverPerBowler,
+    TournamentModel? tournament,
     Map<String, String>? teamNames,
     Map<String, String>? playerNames,
   }) {
@@ -256,11 +318,13 @@ class CricketScoringEngine {
     final ballsPerOver = rules.ballsPerOver > 0 ? rules.ballsPerOver : AppConstants.ballsPerOver;
     final bowlerBallsSoFar = bowlingScores[bowlerId]?.balls ?? 0;
     final stageEnum = match.isFinal ? MatchStage.finalMatch : MatchStage.league;
+    final resolvedQuota = maxOverPerBowler ??
+        resolveMaxOversPerBowler(match: match, tournament: tournament);
     final maxBallsAllowed = getBowlerMaxBalls(
       bowlerId: bowlerId,
       stage: stageEnum,
       bowlingScores: bowlingScores.values.toList(),
-      maxOverPerBowler: rules.maxOverPerBowler,
+      maxOverPerBowler: resolvedQuota,
       matchOvers: match.maxOvers,
       ballsPerOver: ballsPerOver,
     );

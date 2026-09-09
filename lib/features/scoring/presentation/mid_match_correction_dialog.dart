@@ -3,12 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_constants.dart';
 import '../models/match_model.dart';
 import '../models/team_model.dart';
 import '../models/player_model.dart';
 import '../providers/scoring_controller.dart';
-import '../../match_management/providers/tournament_providers.dart';
 import '../../match_management/presentation/widgets/quick_add_player_dialog.dart';
 
 class MidMatchCorrectionDialog extends ConsumerStatefulWidget {

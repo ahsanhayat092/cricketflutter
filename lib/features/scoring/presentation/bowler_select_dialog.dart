@@ -14,6 +14,7 @@ class BowlerSelectDialog extends StatefulWidget {
   final Map<String, BowlingScore> bowlingScores;
   final int matchOvers;
   final String title;
+  final ValueChanged<int>? onQuotaChanged;
 
   const BowlerSelectDialog({
     super.key,
@@ -24,6 +25,7 @@ class BowlerSelectDialog extends StatefulWidget {
     this.matchOvers = 4,
     required this.bowlingScores,
     this.title = 'SELECT MANDATORY NEXT BOWLER',
+    this.onQuotaChanged,
   });
 
   @override
@@ -32,10 +34,11 @@ class BowlerSelectDialog extends StatefulWidget {
 
 class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
   String? _selectedBowlerId;
+  late int _currentMaxOvers;
 
   String get _subtitle {
-    if (widget.maxOverPerBowler > 1) {
-      return 'Max ${widget.maxOverPerBowler} overs per bowler (Consecutive guard active)';
+    if (_currentMaxOvers > 1) {
+      return 'Max $_currentMaxOvers overs per bowler (Consecutive guard active)';
     }
     if (widget.isFinalMatch && widget.matchOvers <= 5) {
       return 'Final Match: Special quota active (Consecutive guard active)';
@@ -46,20 +49,33 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
   @override
   void initState() {
     super.initState();
-    // Auto-select first eligible bowler if available
+    _currentMaxOvers = widget.maxOverPerBowler;
+    _selectFirstEligibleBowler();
+  }
+
+  void _selectFirstEligibleBowler() {
     for (var bowler in widget.bowlingSquad) {
       final eligible = CricketScoringEngine.canBowlerBowlNextOver(
         bowlerId: bowler.id,
         previousBowlerId: widget.previousBowlerId,
         isFinalMatch: widget.isFinalMatch,
         bowlingScores: widget.bowlingScores,
-        maxOverPerBowler: widget.maxOverPerBowler,
+        maxOverPerBowler: _currentMaxOvers,
       );
       if (eligible) {
         _selectedBowlerId = bowler.id;
         break;
       }
     }
+  }
+
+  void _updateQuota(int newQuota) {
+    if (newQuota == _currentMaxOvers) return;
+    setState(() {
+      _currentMaxOvers = newQuota;
+      _selectFirstEligibleBowler();
+    });
+    widget.onQuotaChanged?.call(newQuota);
   }
 
   @override
@@ -112,6 +128,71 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
               ),
               const Divider(height: 24, color: Colors.white12),
 
+              // Interactive Quota Selector Bar
+              Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.accent.withValues(alpha: 0.2)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.tune_rounded, size: 16, color: AppColors.accent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Bowler Quota:',
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    Wrap(
+                      spacing: 6,
+                      children: () {
+                        final maxLimit = (widget.matchOvers <= 6 ? widget.matchOvers : 6).clamp(1, 10);
+                        final options = <int>{};
+                        for (int i = 1; i <= maxLimit; i++) {
+                          options.add(i);
+                        }
+                        options.add(_currentMaxOvers);
+                        final sorted = options.toList()..sort();
+                        return sorted.map((quota) {
+                          final isSelected = quota == _currentMaxOvers;
+                          return GestureDetector(
+                            onTap: () => _updateQuota(quota),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: isSelected ? AppColors.accent : Colors.black26,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: isSelected ? AppColors.accent : Colors.white12,
+                                  width: isSelected ? 1.5 : 1,
+                                ),
+                              ),
+                              child: Text(
+                                '${quota}ov',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected ? Colors.black : AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList();
+                      }(),
+                    ),
+                  ],
+                ),
+              ),
+
               // Bowler List
               Flexible(
                 child: ListView.separated(
@@ -125,7 +206,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                       previousBowlerId: widget.previousBowlerId,
                       isFinalMatch: widget.isFinalMatch,
                       bowlingScores: widget.bowlingScores,
-                      maxOverPerBowler: widget.maxOverPerBowler,
+                      maxOverPerBowler: _currentMaxOvers,
                     );
 
                     final ineligibilityReason = CricketScoringEngine.getBowlerIneligibilityReason(
@@ -133,7 +214,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                       previousBowlerId: widget.previousBowlerId,
                       isFinalMatch: widget.isFinalMatch,
                       bowlingScores: widget.bowlingScores,
-                      maxOverPerBowler: widget.maxOverPerBowler,
+                      maxOverPerBowler: _currentMaxOvers,
                     );
 
                     final score = widget.bowlingScores[bowler.id];
@@ -146,7 +227,7 @@ class _BowlerSelectDialogState extends State<BowlerSelectDialog> {
                       bowlerId: bowler.id,
                       stage: stage,
                       bowlingScores: widget.bowlingScores.values.toList(),
-                      maxOverPerBowler: widget.maxOverPerBowler,
+                      maxOverPerBowler: _currentMaxOvers,
                       matchOvers: widget.matchOvers,
                     );
                     final maxOvers = maxBalls ~/ 6;

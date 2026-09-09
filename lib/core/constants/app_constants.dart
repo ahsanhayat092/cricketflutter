@@ -24,6 +24,7 @@ class AppConstants {
   static int getMaxOverPerBowler({required int oversPerSide, int? explicitMax}) {
     if (explicitMax != null && explicitMax > 0) return explicitMax;
     if (oversPerSide <= 5) return 1;
+    if (oversPerSide <= 10) return 3; // Default to 3 overs for 10-over matches
     return (oversPerSide / 5).ceil();
   }
 

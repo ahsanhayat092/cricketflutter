@@ -248,6 +248,7 @@ class MatchModel {
     return rules.formatType == 'T20' ? 20 : (rules.formatType.contains('T10') ? 10 : 4);
   }
   int get maxBalls => maxOvers * 6;
+  int? get maxOverPerBowler => rules.maxOverPerBowler > 0 ? rules.maxOverPerBowler : null;
 
   /// Dynamic Squad Size:
   /// Prioritizes actual lineup size (teamAPlayingVI / teamBPlayingVI), then rules, then format defaults.

@@ -759,4 +759,16 @@ class FirebaseScoringService {
       'updatedAt': DateTime.now().toIso8601String(),
     }, SetOptions(merge: true));
   }
+
+  /// Update Bowler Quota for Match
+  Future<void> updateMatchBowlerQuota({
+    required String matchId,
+    required int maxOverPerBowler,
+  }) async {
+    await _firestore.doc(FirestorePaths.match(matchId)).set({
+      'maxOverPerBowler': maxOverPerBowler,
+      'rules.maxOverPerBowler': maxOverPerBowler,
+      'updatedAt': DateTime.now().toIso8601String(),
+    }, SetOptions(merge: true));
+  }
 }
